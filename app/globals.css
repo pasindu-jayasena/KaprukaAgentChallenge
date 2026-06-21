@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 /* ═══════════════════════════════════════════════
    KAPRUKA ANU — Design System
    ═══════════════════════════════════════════════ */
@@ -29,8 +30,8 @@
 
   /* Text */
   --text-primary: #1A1A2E;
-  --text-secondary: #5A5A72;
-  --text-muted: rgba(26, 26, 46, 0.5);
+  --text-secondary: #4A4A62;
+  --text-muted: rgba(26, 26, 46, 0.65);
   --text-on-dark: #FFFFFF;
   --text-on-accent: #401F60;
 

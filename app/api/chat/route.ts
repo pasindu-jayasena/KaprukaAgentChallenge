@@ -6,7 +6,9 @@ import { runGroqChat } from '@/lib/server/groq-chat'
 import { chatRequestSchema } from '@/schemas/chat-request'
 import { getDeviceId } from '@/lib/server/session-cookies'
 import { getProfile, updateProfile, extractInterests } from '@/lib/server/user-memory'
-import type { CartItem, OrderResult } from '@/types'
+import { createKaprukaOrder } from '@/lib/checkout'
+import { parseCheckoutDetails } from '@/lib/parse-checkout-details'
+import type { CartItem, OrderResult, ChatPayload, CheckoutDetailsInput, SavedCheckoutProfile } from '@/types'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
@@ -73,40 +75,43 @@ function parseChips(text: string): string[] | null {
   }
 }
 
-function buildPayload(fullText: string) {
+function buildPayload(fullText: string): ChatPayload {
   const text = fullText
+  const chips = parseChips(text) ?? undefined
 
   const trio = parseBlock(text, 'PRODUCT_TRIO')
-  if (trio.data) return { type: 'product_trio' as const, trio: trio.data, rawText: fullText }
+  if (trio.data) return { type: 'product_trio', trio: trio.data, chips }
 
   const plan = parseBlock(text, 'PLAN_BOARD')
-  if (plan.data) return { type: 'plan_board' as const, plan: plan.data, rawText: fullText }
+  if (plan.data) return { type: 'plan_board', plan: plan.data, chips }
 
   const tracking = parseBlock(text, 'ORDER_TRACKING')
   if (tracking.data) {
     return {
-      type: 'order_tracking' as const,
+      type: 'order_tracking',
       tracking: tracking.data,
-      rawText: fullText,
+      chips,
     }
   }
 
   return {
-    type: 'chat' as const,
+    type: 'chat',
     text: stripBlocks(text) || 'Could you rephrase that?',
-    chips: parseChips(text) ?? undefined,
-    rawText: fullText,
+    chips,
   }
 }
 
 /** Extract plan board data from the LLM response text for the checkout receipt */
 function extractPlanBoardContext(responseText: string): {
-  items?: Array<{ name: string; price: number; quantity: number; image?: string | null }>
+  items?: Array<{ id?: string; name: string; price: number; quantity: number; image?: string | null }>
   recipient?: { name: string; phone: string; city: string; address: string; date: string }
   subtotal?: number
   deliveryFee?: number
   total?: number
   giftMessage?: string
+  senderName?: string
+  senderEmail?: string
+  specialInstructions?: string
 } | null {
   const plan = parseBlock(responseText, 'PLAN_BOARD')
   if (!plan.data) return null
@@ -140,6 +145,46 @@ function extractPlanBoardContext(responseText: string): {
     deliveryFee: Number(d.delivery_fee) || undefined,
     total: Number(d.total) || undefined,
     giftMessage: d.gift_message ? String(d.gift_message) : undefined,
+    senderName: d.sender_name ? String(d.sender_name) : undefined,
+    senderEmail: d.sender_email ? String(d.sender_email) : undefined,
+    specialInstructions: d.special_instructions ? String(d.special_instructions) : undefined,
+  }
+}
+
+function buildCheckoutPayload(
+  orderResult: OrderResult,
+  cart: CartItem[],
+  responseText: string,
+  checkoutDetails?: CheckoutDetailsInput
+): ChatPayload {
+  const planContext = extractPlanBoardContext(responseText)
+  const subtotal =
+    planContext?.subtotal ?? cart.reduce((s, i) => s + i.price * i.quantity, 0)
+
+  return {
+    type: 'checkout',
+    orderResult,
+    text: stripBlocks(responseText) || 'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉',
+    items:
+      planContext?.items ??
+      cart.map((i) => ({
+        id: i.id,
+        name: i.name,
+        price: i.price,
+        quantity: i.quantity,
+        image: i.image,
+        url: i.url,
+      })),
+    cartRestore: cart.map((i) => ({ ...i })),
+    recipient: checkoutDetails?.recipient ?? planContext?.recipient,
+    subtotal,
+    deliveryFee: planContext?.deliveryFee,
+    total: planContext?.total ?? subtotal,
+    giftMessage: checkoutDetails?.giftMessage ?? planContext?.giftMessage,
+    senderName: checkoutDetails?.senderName ?? planContext?.senderName,
+    senderEmail: checkoutDetails?.senderEmail ?? planContext?.senderEmail,
+    specialInstructions:
+      checkoutDetails?.specialInstructions ?? planContext?.specialInstructions,
   }
 }
 
@@ -189,8 +234,13 @@ export async function POST(req: Request) {
     return new Response('Invalid request', { status: 400 })
   }
 
-  const { messages, uiLang, chatLang, cartItems } = parsed.data
+  const { messages, uiLang, chatLang, cartItems, savedProfiles } = parsed.data
   if (!messages.length) return new Response('No messages', { status: 400 })
+
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
+  const checkoutDetails = lastUserMessage
+    ? parseCheckoutDetails(lastUserMessage.content)
+    : null
 
   const cart: CartItem[] = (cartItems ?? []).map((i) => ({
     id: i.id,
@@ -231,9 +281,56 @@ export async function POST(req: Request) {
 
       try {
         const mcp = new KaprukaMCPClient()
-        const systemPrompt = buildSystemPrompt(cart, uiLang, chatLang, userProfile)
+        const systemPrompt = buildSystemPrompt(
+          cart,
+          uiLang,
+          chatLang,
+          userProfile,
+          savedProfiles?.map((p) => ({
+            senderName: p.senderName,
+            senderEmail: p.senderEmail,
+            recipient: p.recipient,
+            giftMessage: p.giftMessage ?? undefined,
+            specialInstructions: p.specialInstructions ?? undefined,
+          })) ?? null
+        )
         let orderResult: OrderResult | null = null
         let responseText = ''
+
+        // Structured checkout from chat form — same path as manual cart checkout
+        if (checkoutDetails && cart.length > 0) {
+          emit({
+            type: 'status',
+            icon: 'lock',
+            key: 'order',
+            label: 'Locking in your order',
+          })
+          try {
+            orderResult = await createKaprukaOrder({
+              cart,
+              recipient: checkoutDetails.recipient,
+              senderName: checkoutDetails.senderName,
+              senderEmail: checkoutDetails.senderEmail,
+              giftMessage: checkoutDetails.giftMessage,
+              specialInstructions: checkoutDetails.specialInstructions,
+            })
+            responseText =
+              'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉'
+          } catch (orderErr) {
+            const msg =
+              orderErr instanceof Error ? orderErr.message : 'Checkout failed'
+            emit({
+              type: 'final',
+              payload: {
+                type: 'chat',
+                text: msg.replace(/^Order failed:\s*/i, '').trim() || 'Checkout failed. Please check your details and try again.',
+              },
+            })
+            clearInterval(heartbeatTimer)
+            controller.close()
+            return
+          }
+        }
 
         const onStatus = (name: string, args: Record<string, unknown>) => {
           emit({ type: 'status', ...statusLabel(name, args) })
@@ -243,9 +340,9 @@ export async function POST(req: Request) {
           orderResult = r
         }
 
-        // Primary: Claude via tokenlb.net
+        // Primary: Claude via tokenlb.net (skip if order already created from form)
         let usedBackup = false
-        if (hasClaude) {
+        if (!orderResult && hasClaude) {
           try {
             responseText = await runClaudeChat({
               systemPrompt,
@@ -268,7 +365,7 @@ export async function POST(req: Request) {
         }
 
         // Backup: Groq (also handles voice)
-        if (!hasClaude || usedBackup) {
+        if (!orderResult && (!hasClaude || usedBackup)) {
           if (!hasGroq) throw new Error('Claude failed and Groq not configured')
           console.log('[Fallback] Using Groq backup')
           responseText = await runGroqChat({
@@ -294,17 +391,15 @@ export async function POST(req: Request) {
           label: 'Putting it together',
         })
 
-        let payload = buildPayload(responseText)
+        let payload: ChatPayload = buildPayload(responseText)
 
         if (orderResult) {
-          // Extract plan board context for the full receipt
-          const planContext = extractPlanBoardContext(responseText)
-
-          // Update user profile with order data
           try {
             const orderedNames = cart.map((i) => i.name)
-            const recipientName = planContext?.recipient?.name
-            const city = planContext?.recipient?.city
+            const recipientName =
+              checkoutDetails?.recipient.name ?? extractPlanBoardContext(responseText)?.recipient?.name
+            const city =
+              checkoutDetails?.recipient.city ?? extractPlanBoardContext(responseText)?.recipient?.city
 
             updateProfile(deviceId, {
               orderCount: userProfile.orderCount + 1,
@@ -317,23 +412,12 @@ export async function POST(req: Request) {
             // Profile update failure is non-critical
           }
 
-          payload = {
-            type: 'checkout',
+          payload = buildCheckoutPayload(
             orderResult,
-            text: stripBlocks(responseText) || 'Your order is ready! 🎉',
-            // Include full context for the premium receipt card
-            items: planContext?.items ?? cart.map((i) => ({
-              name: i.name,
-              price: i.price,
-              quantity: i.quantity,
-              image: i.image,
-            })),
-            recipient: planContext?.recipient,
-            subtotal: planContext?.subtotal ?? cart.reduce((s, i) => s + i.price * i.quantity, 0),
-            deliveryFee: planContext?.deliveryFee,
-            total: planContext?.total ?? cart.reduce((s, i) => s + i.price * i.quantity, 0),
-            giftMessage: planContext?.giftMessage,
-          } as any
+            cart,
+            responseText,
+            checkoutDetails ?? undefined
+          )
         }
         emit({ type: 'final', payload })
       } catch (e) {

@@ -24,6 +24,24 @@ export const chatRequestSchema = z.object({
     )
     .max(50)
     .optional(),
+  savedProfiles: z
+    .array(
+      z.object({
+        senderName: z.string(),
+        senderEmail: z.string(),
+        giftMessage: z.string().nullish(),
+        specialInstructions: z.string().nullish(),
+        recipient: z.object({
+          name: z.string(),
+          phone: z.string(),
+          address: z.string(),
+          city: z.string(),
+          date: z.string(),
+        }),
+      })
+    )
+    .max(10)
+    .optional(),
 })
 
 export const recipientSchema = z.object({

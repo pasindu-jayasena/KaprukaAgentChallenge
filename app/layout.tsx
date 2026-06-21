@@ -37,13 +37,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="light"
       suppressHydrationWarning
       className={`${sourceSans.variable} ${notoSinhala.variable} ${notoTamil.variable} h-full`}
     >
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('anu-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.dataset.theme='dark';}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('anu-theme');if(t==='dark')document.documentElement.dataset.theme='dark';else document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}})();`,
           }}
         />
       </head>

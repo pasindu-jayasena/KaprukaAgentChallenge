@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useRecipientStore } from '@/store/recipientStore'
+import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
 import type { Recipient } from '@/types'
 
 interface Props {
@@ -19,11 +20,11 @@ export function RecipientForm({
   processing = false,
 }: Props) {
   const { messages } = useLanguage()
-  const saved = useRecipientStore((s) => s.saved)
-  const setSaved = useRecipientStore((s) => s.setSaved)
+  const latest = useRecipientStore((s) => s.getLatestProfile())
+  const saveProfile = useRecipientStore((s) => s.saveProfile)
 
   const [form, setForm] = useState<Recipient>(
-    saved ?? {
+    latest?.recipient ?? {
       name: '',
       phone: '',
       address: '',
@@ -33,15 +34,25 @@ export function RecipientForm({
   )
 
   const useSaved = () => {
-    if (saved) {
-      setForm(saved)
-      onSubmit(saved)
+    if (latest?.recipient) {
+      setForm(latest.recipient)
+      onSubmit(latest.recipient)
     }
+  }
+
+  const persistPartial = (recipient: Recipient) => {
+    saveProfile({
+      recipient,
+      senderName: latest?.senderName ?? '',
+      senderEmail: latest?.senderEmail ?? DEFAULT_SENDER_EMAIL,
+      giftMessage: latest?.giftMessage,
+      specialInstructions: latest?.specialInstructions,
+    })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setSaved(form)
+    persistPartial(form)
     onSubmit(form)
   }
 
@@ -53,7 +64,7 @@ export function RecipientForm({
       {variant === 'chat' && (
         <p className="text-xs font-semibold text-kapruka-header">{messages.form.recipient}</p>
       )}
-      {saved && (
+      {latest && (
         <button type="button" onClick={useSaved} className="text-xs text-kapruka-header underline">
           {messages.chat.sameAddress}
         </button>
@@ -107,7 +118,7 @@ export function RecipientForm({
           type="button"
           disabled={processing}
           onClick={() => {
-            setSaved(form)
+            persistPartial(form)
             onViaAnu(form)
           }}
           className="w-full rounded-xl border border-kapruka-header py-2 text-sm font-medium text-kapruka-header"

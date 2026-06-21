@@ -8,14 +8,33 @@ import type { ProductTrio } from '@/types'
 
 interface Props {
   trio: ProductTrio
+  onAddToCart?: (product: { id: string; name: string; price: number }) => void
 }
 
-export function ProductTrioCard({ trio }: Props) {
+export function ProductTrioCard({ trio, onAddToCart }: Props) {
   const { messages } = useLanguage()
   const addItem = useCartStore((s) => s.addItem)
   const items = useCartStore((s) => s.items)
 
   const products = trio.products ?? []
+
+  const handleAdd = (p: (typeof products)[0], i: number) => {
+    const id = (p as { product_id?: string }).product_id ?? p.id
+    const image = (p as { image_url?: string }).image_url ?? p.image ?? null
+    const wasInCart = items.some((x) => x.id === id)
+
+    addItem({
+      id,
+      name: p.name,
+      price: p.price,
+      image,
+      url: p.url,
+    })
+
+    if (!wasInCart) {
+      onAddToCart?.({ id, name: p.name, price: p.price })
+    }
+  }
 
   return (
     <div className="space-y-2">
@@ -25,8 +44,7 @@ export function ProductTrioCard({ trio }: Props) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {products.map((p, i) => {
           const id = (p as { product_id?: string }).product_id ?? p.id
-          const image =
-            (p as { image_url?: string }).image_url ?? p.image ?? null
+          const image = (p as { image_url?: string }).image_url ?? p.image ?? null
           const inCart = items.some((x) => x.id === id)
           const isPick = p.pick ?? i === 1
 
@@ -35,17 +53,11 @@ export function ProductTrioCard({ trio }: Props) {
               key={id}
               type="button"
               whileHover={{ scale: 1.02 }}
-              onClick={() =>
-                addItem({
-                  id,
-                  name: p.name,
-                  price: p.price,
-                  image,
-                  url: p.url,
-                })
-              }
+              onClick={() => handleAdd(p, i)}
               className={`rounded-xl border bg-[var(--bg-surface)] p-3 text-left shadow-sm transition ${
-                isPick ? 'border-kapruka-accent ring-2 ring-kapruka-accent/30' : 'border-[var(--border-light)]'
+                isPick
+                  ? 'border-kapruka-accent ring-2 ring-kapruka-accent/30'
+                  : 'border-[var(--border-light)]'
               }`}
             >
               {isPick && (
@@ -66,7 +78,7 @@ export function ProductTrioCard({ trio }: Props) {
               {p.reason && (
                 <p className="mt-1 line-clamp-2 text-[11px] text-[var(--text-muted)]">{p.reason}</p>
               )}
-              <p className="mt-1 text-sm font-bold text-kapruka-header">
+              <p className="mt-1 text-sm font-bold text-kapruka-header dark:text-[var(--text-primary)]">
                 Rs. {p.price?.toLocaleString()}
               </p>
               <span

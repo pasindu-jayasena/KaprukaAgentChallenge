@@ -8,7 +8,7 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
 // Cost controls
 const MAX_TOKENS = 800 // Keep responses concise & cheap
 const HISTORY_CAP = 8 // Send only last 8 messages to reduce token usage
-const MAX_TOOL_ITERATIONS = 4
+const MAX_TOOL_ITERATIONS = 8
 
 interface ToolDef {
   type: 'function'

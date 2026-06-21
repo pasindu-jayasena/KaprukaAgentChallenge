@@ -36,7 +36,7 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
 
   return (
     <header className="kap-topnav" role="banner">
-      <div className="mx-auto flex w-full max-w-[1400px] items-center gap-1 sm:gap-4 h-full">
+      <div className="mx-auto flex h-full w-full max-w-[1400px] items-center gap-1 sm:gap-4">
         {/* Left: Menu + Logo */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {onMenuToggle && (
@@ -51,21 +51,23 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
               </button>
             </div>
           )}
-          <Link href="/" className="kap-logo flex items-baseline gap-1 sm:gap-1.5 whitespace-nowrap">
-            <span>kapr<span className="kap-logo-accent">u</span>ka</span>
-            <span className="text-base font-bold text-[#FCE22A] tracking-wide">Anu</span>
+          <Link href="/" className="kap-logo flex items-baseline gap-1 whitespace-nowrap sm:gap-1.5">
+            <span>
+              kapr<span className="kap-logo-accent">u</span>ka
+            </span>
+            <span className="text-base font-bold tracking-wide text-[#FCE22A]">Anu</span>
           </Link>
         </div>
 
-        {/* Center: Spacer to push actions right, plus optional Search pill */}
-        <div className="flex-1 flex justify-end sm:justify-start min-w-0">
-          <div className="hidden lg:flex flex-1 max-w-[580px] mx-2 min-w-0">
+        {/* Center: Search */}
+        <div className="flex min-w-0 flex-1 justify-end sm:justify-start">
+          <div className="mx-2 hidden min-w-0 max-w-[580px] flex-1 lg:flex">
             <form onSubmit={handleSearch} className="kap-search-pill w-full">
               <input
                 name="q"
                 type="text"
                 className="kap-search-input min-w-0 w-full"
-                placeholder="SEARCH PRODUCTS.."
+                placeholder={messages.nav.search}
                 autoComplete="off"
               />
               <button type="submit" className="kap-search-btn" aria-label="Search">
@@ -77,7 +79,6 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
 
         {/* Right: Actions */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {/* Language toggle */}
           <div className="kap-lang-pill flex items-center">
             {LANGS.map((l) => (
               <button
@@ -91,7 +92,6 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
             ))}
           </div>
 
-          {/* Cart */}
           <button
             type="button"
             onClick={onCartOpen}
@@ -103,14 +103,17 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
             <CartBadge />
           </button>
 
-          {/* Dark mode */}
           <button
             type="button"
             onClick={toggle}
             aria-label={theme === 'light' ? 'Dark mode' : 'Light mode'}
             className="kap-nav-icon"
           >
-            {theme === 'light' ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
+            {theme === 'light' ? (
+              <Moon className="h-[18px] w-[18px]" />
+            ) : (
+              <Sun className="h-[18px] w-[18px]" />
+            )}
           </button>
         </div>
       </div>

@@ -100,7 +100,7 @@ export async function runGroqChat(opts: {
   ]
 
   let iterations = 0
-  while (iterations < 4) {
+  while (iterations < 8) {
     iterations++
     const completion = await groq.chat.completions.create({
       model,

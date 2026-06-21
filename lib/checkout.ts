@@ -1,12 +1,8 @@
-import type { CartItem, OrderResult, Recipient } from '@/types'
+import type { CartItem, CheckoutDetailsInput, OrderResult } from '@/types'
 import { KaprukaMCPClient } from '@/lib/server/mcp-client'
+import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
 
-export interface CheckoutInput {
-  cart: CartItem[]
-  recipient: Recipient
-  senderName: string
-  giftMessage?: string
-}
+export type CheckoutInput = CheckoutDetailsInput & { cart: CartItem[] }
 
 export async function createKaprukaOrder(input: CheckoutInput): Promise<OrderResult> {
   const mcp = new KaprukaMCPClient()
@@ -21,8 +17,13 @@ export async function createKaprukaOrder(input: CheckoutInput): Promise<OrderRes
       address: input.recipient.address,
       city: input.recipient.city,
       date: input.recipient.date,
+      special_instructions: input.specialInstructions,
     },
-    sender: { name: input.senderName, anonymous: false },
+    sender: {
+      name: input.senderName,
+      email: input.senderEmail || DEFAULT_SENDER_EMAIL,
+      anonymous: false,
+    },
     gift_message: input.giftMessage,
     currency: 'LKR',
     response_format: 'json',
@@ -43,8 +44,4 @@ export async function createKaprukaOrder(input: CheckoutInput): Promise<OrderRes
     console.error('Failed to parse order response. Raw output:', output)
     throw new Error(`Order failed: ${output}`)
   }
-}
-
-export function recipientToChatMessage(r: Recipient, senderName: string): string {
-  return `Recipient details — Name: ${r.name}; Phone: ${r.phone}; Address: ${r.address}; City: ${r.city}; Date: ${r.date}; Sender: ${senderName}`
 }

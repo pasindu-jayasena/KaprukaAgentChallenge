@@ -1,13 +1,13 @@
 import type { KaprukaMCPClient } from '@/lib/server/mcp-client'
-import type { OrderResult } from '@/types'
+import { sanitizeCreateOrderArgs, sanitizeToolOutput } from '@/lib/server/mcp-order'
 
 const CLAUDE_BASE_URL = process.env.CLAUDE_BASE_URL || 'https://tokenlb.net/v1'
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || ''
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
 
 // Cost controls
-const MAX_TOKENS = 800 // Keep responses concise & cheap
-const HISTORY_CAP = 8 // Send only last 8 messages to reduce token usage
+const MAX_TOKENS = 1200 // Room for 4–6 product picks in PRODUCT_TRIO
+const HISTORY_CAP = 16 // Send last 16 messages for better memory
 const MAX_TOOL_ITERATIONS = 8
 
 interface ToolDef {
@@ -25,7 +25,8 @@ function claudeToolDefs(): ToolDef[] {
       type: 'function',
       function: {
         name: 'kapruka_search_products',
-        description: 'Search Kapruka product catalog by keyword, category, or price range',
+        description:
+          'Search Kapruka catalog ONLY when the customer wants to browse or buy gifts. Do NOT use for advice questions, comparisons of already-shown items, or general chat.',
         parameters: {
           type: 'object',
           properties: {
@@ -90,14 +91,29 @@ function claudeToolDefs(): ToolDef[] {
       type: 'function',
       function: {
         name: 'kapruka_create_order',
-        description: 'Create a guest checkout order',
+        description:
+          'Create guest checkout. sender: {name} only (no email). delivery: {address,city,date,instructions?} — use instructions not special_instructions.',
         parameters: {
           type: 'object',
           properties: {
             cart: { type: 'array' },
-            recipient: { type: 'object' },
-            delivery: { type: 'object' },
-            sender: { type: 'object' },
+            recipient: {
+              type: 'object',
+              properties: { name: { type: 'string' }, phone: { type: 'string' } },
+            },
+            delivery: {
+              type: 'object',
+              properties: {
+                address: { type: 'string' },
+                city: { type: 'string' },
+                date: { type: 'string' },
+                instructions: { type: 'string' },
+              },
+            },
+            sender: {
+              type: 'object',
+              properties: { name: { type: 'string' }, anonymous: { type: 'boolean' } },
+            },
             gift_message: { type: 'string' },
           },
           required: ['cart', 'recipient', 'delivery', 'sender'],
@@ -161,7 +177,7 @@ async function callClaude(messages: ChatMessage[]): Promise<CompletionResponse> 
       messages,
       tools: claudeToolDefs(),
       max_tokens: MAX_TOKENS,
-      temperature: 0.8,
+      temperature: 0.65,
     }),
     signal: AbortSignal.timeout(45000),
   })
@@ -193,7 +209,7 @@ export async function runClaudeChat(opts: {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
   mcp: KaprukaMCPClient
   onStatus: (name: string, args: Record<string, unknown>) => void
-  onOrderResult?: (result: OrderResult) => void
+  onOrderPreview?: (args: Record<string, unknown>) => void
 }): Promise<string> {
   // Build messages with history cap for cost control
   const trimmedHistory = opts.messages.slice(-HISTORY_CAP)
@@ -240,27 +256,27 @@ export async function runClaudeChat(opts: {
         }
 
         opts.onStatus(name, args)
-        const output = await opts.mcp.callTool(name, args)
+        const toolArgs =
+          name === 'kapruka_create_order' ? sanitizeCreateOrderArgs(args) : args
 
-        // Check for order results
         if (name === 'kapruka_create_order') {
-          try {
-            const j = JSON.parse(output) as {
-              checkout_url?: string
-              order_ref?: string
-              expires_at?: string
-            }
-            if (j.checkout_url || j.order_ref) {
-              opts.onOrderResult?.({
-                url: j.checkout_url ?? null,
-                ref: j.order_ref ?? null,
-                expiresAt: j.expires_at ?? null,
-              })
-            }
-          } catch {
-            /* not json */
-          }
+          opts.onOrderPreview?.(toolArgs)
+          claudeMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              status: 'preview_shown',
+              message:
+                'Order review card shown to the customer. They must tap Confirm before the payment link is generated.',
+            }),
+          })
+          continue
         }
+
+        const output = sanitizeToolOutput(
+          name,
+          await opts.mcp.callTool(name, toolArgs)
+        )
 
         claudeMessages.push({
           role: 'tool',

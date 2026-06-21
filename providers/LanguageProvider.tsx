@@ -8,27 +8,25 @@ import {
   useState,
 } from 'react'
 import type { UiLang } from '@/types'
-import { getMessages, type Messages } from '@/lib/i18n'
+import { getMessages, formatMessage, type Messages } from '@/lib/i18n'
 
 interface LanguageContextValue {
   uiLang: UiLang
   setUiLang: (lang: UiLang) => void
   messages: Messages
+  format: typeof formatMessage
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [uiLang, setUiLangState] = useState<UiLang>('en')
-  const [mounted, setMounted] = useState(false)
+function readStoredUiLang(): UiLang {
+  if (typeof window === 'undefined') return 'en'
+  const stored = localStorage.getItem('uiLang') as UiLang | null
+  return stored && ['en', 'si', 'ta'].includes(stored) ? stored : 'en'
+}
 
-  useEffect(() => {
-    const stored = localStorage.getItem('uiLang') as UiLang | null
-    if (stored && ['en', 'si', 'ta'].includes(stored)) {
-      setUiLangState(stored)
-    }
-    setMounted(true)
-  }, [])
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [uiLang, setUiLangState] = useState<UiLang>(readStoredUiLang)
 
   const setUiLang = useCallback((lang: UiLang) => {
     setUiLangState(lang)
@@ -37,13 +35,13 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (mounted) document.documentElement.lang = uiLang
-  }, [uiLang, mounted])
+    document.documentElement.lang = uiLang
+  }, [uiLang])
 
   const messages = getMessages(uiLang)
 
   return (
-    <LanguageContext.Provider value={{ uiLang, setUiLang, messages }}>
+    <LanguageContext.Provider value={{ uiLang, setUiLang, messages, format: formatMessage }}>
       {children}
     </LanguageContext.Provider>
   )

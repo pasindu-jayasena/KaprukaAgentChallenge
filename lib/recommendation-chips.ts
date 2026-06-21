@@ -51,7 +51,6 @@ export function getAfterCheckoutChips(uiLang: UiLang): string[] {
 
 /** Infer helpful quick-reply chips when the model omits <CHIPS>. */
 export function inferChipsFromAssistantText(text: string, uiLang: UiLang): string[] | null {
-  const t = text.toLowerCase()
   if (OCCASION_PATTERNS.test(text)) return getOccasionChips(uiLang)
   if (BUDGET_PATTERNS.test(text)) return BUDGET[uiLang]
   if (RECIPIENT_PATTERNS.test(text)) return RECIPIENT[uiLang]

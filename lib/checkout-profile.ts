@@ -25,33 +25,37 @@ export function buildCheckoutDetailsMessage(
   return parts.join('; ')
 }
 
+/** Internal-only — never expose other names or "database" language to the customer. */
 export function buildSavedCheckoutBlock(profiles: SavedCheckoutProfile[]): string {
   if (!profiles.length) return ''
 
-  const lines = ['═══ SAVED RECIPIENTS (from previous orders) ═══']
+  const lines = [
+    '═══ SAVED RECIPIENTS (internal only) ═══',
+    'Match by first name (case-insensitive). Never mention other names to the customer.',
+    '',
+  ]
 
   profiles.forEach((profile, i) => {
     lines.push(
-      `${i + 1}. Recipient: ${profile.recipient.name} · ${profile.recipient.phone}`,
-      `   Address: ${profile.recipient.address}, ${profile.recipient.city}`,
-      `   Sender: ${profile.senderName} · ${profile.senderEmail}`,
-      profile.giftMessage ? `   Personal message: "${profile.giftMessage}"` : '   Personal message: none',
+      `[${i + 1}] ${profile.recipient.name}`,
+      `    phone: ${profile.recipient.phone}`,
+      `    address: ${profile.recipient.address}, ${profile.recipient.city}`,
+      `    sender: ${profile.senderName}`,
+      profile.giftMessage ? `    gift_message: "${profile.giftMessage}"` : '',
       profile.specialInstructions
-        ? `   Special instructions: "${profile.specialInstructions}"`
-        : '   Special instructions: none',
+        ? `    delivery_instructions: "${profile.specialInstructions}"`
+        : '',
       ''
     )
   })
 
   lines.push(
-    'CHECKOUT CONVERSATION FLOW (follow exactly):',
-    'Step 1 — Ask ONLY for the recipient name first: "Who are you sending this to?" Do not ask for address or sender yet.',
-    'Step 2 — If the name matches a saved recipient above, show their saved details briefly and ask: "I have these details for [name] — still correct?" Use chips: ["Yes, correct","No, update details"].',
-    'Step 3 — If they confirm, use ALL saved fields for that recipient (sender name, sender email, phone, address, city, gift message, special instructions). Only ask for a new delivery date if the saved one has passed.',
-    'Step 4 — If the name is new OR they want to update, collect missing fields one at a time: sender name, sender email, phone, address, city, delivery date, optional gift message.',
-    'Step 5 — When complete, output <PLAN_BOARD> or proceed to order. Never skip sender name or sender email.',
-    'Save mentally: each recipient name maps to their own full profile including sender details.'
+    'FLOW:',
+    '1. Ask ONLY for recipient name — nothing about checking files or databases.',
+    '2. If name matches → show phone/address/city and ask "Are these details still correct?"',
+    '3. If no match → ask for phone, address, city, date in one friendly message.',
+    '4. Never say "on file", "saved", "database", or mention other people.',
   )
 
-  return lines.join('\n')
+  return lines.filter(Boolean).join('\n')
 }

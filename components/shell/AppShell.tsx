@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, isValidElement, cloneElement } from 'react'
+import { useState, isValidElement, cloneElement } from 'react'
 import { AppHeader } from '@/components/shell/AppHeader'
 import { AmbientScene } from '@/components/chat/AmbientScene'
 import { CartDrawer } from '@/components/cart/CartDrawer'
@@ -30,18 +30,8 @@ export function AppShell({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
-  useEffect(() => {
-    if (!collapsibleSidebar) return
-    const stored = localStorage.getItem('anu-sessions-collapsed')
-    if (stored === 'false') setSidebarCollapsed(false)
-  }, [collapsibleSidebar])
-
   const toggleCollapse = () => {
-    setSidebarCollapsed((c) => {
-      const next = !c
-      localStorage.setItem('anu-sessions-collapsed', String(next))
-      return next
-    })
+    setSidebarCollapsed((c) => !c)
   }
 
   const hasSidebar = !!sidebar

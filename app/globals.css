@@ -384,6 +384,18 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   flex-shrink: 0;
 }
 
+.product-rail {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(64, 31, 96, 0.25) transparent;
+}
+.product-rail::-webkit-scrollbar {
+  height: 4px;
+}
+.product-rail::-webkit-scrollbar-thumb {
+  background: rgba(64, 31, 96, 0.25);
+  border-radius: 4px;
+}
+
 /* ═══════════════════════════════════════════════
    HERO BANNER
    ═══════════════════════════════════════════════ */

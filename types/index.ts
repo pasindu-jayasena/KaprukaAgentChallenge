@@ -8,7 +8,9 @@ export interface Product {
   image: string | null
   url: string | null
   reason?: string
+  description?: string
   pick?: boolean
+  in_stock?: boolean
 }
 
 export interface ProductTrio {
@@ -39,12 +41,16 @@ export interface PlanBoard {
   total?: number
   currency?: string
   needs_recipient?: boolean
+  confirmed?: boolean
 }
 
 export interface OrderResult {
   url: string | null
   ref: string | null
   expiresAt: string | null
+  subtotal?: number
+  deliveryFee?: number
+  total?: number
 }
 
 export interface OrderTracking {
@@ -103,6 +109,7 @@ export interface CheckoutSuccessPayload {
   recipient: { name: string; phone: string; city: string; address: string; date: string }
   subtotal: number
   total: number
+  deliveryFee?: number
   giftMessage?: string
   senderName?: string
   senderEmail?: string
@@ -121,6 +128,23 @@ export type ChatPayload =
   | { type: 'product_trio'; trio: ProductTrio; rawText?: string; chips?: string[] }
   | { type: 'plan_board'; plan: PlanBoard; rawText?: string; chips?: string[] }
   | { type: 'order_tracking'; tracking: OrderTracking; rawText?: string; chips?: string[] }
+  | {
+      type: 'order_preview'
+      text?: string
+      details: CheckoutDetailsInput
+      items: Array<{
+        id?: string
+        name: string
+        price: number
+        quantity: number
+        image?: string | null
+      }>
+      subtotal: number
+      deliveryFee: number | null
+      total: number | null
+      deliveryNote?: string
+      confirmed?: boolean
+    }
   | {
       type: 'checkout'
       orderResult: OrderResult

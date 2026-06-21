@@ -24,6 +24,6 @@ export const ANU_GREETINGS = {
   en: "Hey! I'm Anu — what are you looking for today?",
   si: 'ආයුබෝවන්! මම Anu. අද මොකද ඕනේ?',
   ta: 'வணக்கம்! நான் Anu. இன்று என்ன வேண்டும்?',
-  singlish: "Hey! I'm Anu — mokada ganna ona today?",
+  singlish: "Hey! I'm Anu — mokada ganna ona today? 😊",
   tanglish: "Hey! I'm Anu — enna venum today?",
 } as const

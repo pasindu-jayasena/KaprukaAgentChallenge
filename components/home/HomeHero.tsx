@@ -17,15 +17,6 @@ const CHIP_META = [
   { key: 'deals' as const, icon: Tag },
 ] as const
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.12, duration: 0.5, ease: [0.2, 0.7, 0.2, 1] as const },
-  }),
-}
-
 export function HomeHero() {
   const router = useRouter()
   const { messages, uiLang } = useLanguage()
@@ -56,26 +47,6 @@ export function HomeHero() {
   }
 
   const t = sectionTitle[uiLang as keyof typeof sectionTitle] ?? sectionTitle.en
-
-  const heroText = {
-    en: {
-      title: 'FATHERS SHAPE OUR WORLD',
-      subtitle: "THIS FATHER'S DAY, SHAPE HIS SMILE",
-      tagline: 'Gifts that speak louder than words.',
-    },
-    si: {
-      title: 'පියවරුන් අපගේ ලෝකය හැඩගස්වයි',
-      subtitle: 'මේ පිතෘ දිනයට, ඔහුගේ සිනහව හැඩගස්වන්න',
-      tagline: 'වචනවලට වඩා කතා කරන තෑගි.',
-    },
-    ta: {
-      title: 'தந்தையர் நம் உலகை வடிவமைக்கிறார்கள்',
-      subtitle: 'இந்த தந்தையர் தினத்தில், அவரது புன்னகையை வடிவமையுங்கள்',
-      tagline: 'வார்த்தைகளை விட பேசும் பரிசுகள்.',
-    },
-  }
-
-  const heroT = heroText[uiLang as keyof typeof heroText] ?? heroText.en
 
   return (
     <section className="relative w-full">

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createKaprukaOrder } from '@/lib/checkout'
-import { rateLimited } from '@/lib/server/rate-limit'
+import { resolveReceiptTotals } from '@/lib/parse-order-result'
 
 const schema = z.object({
   cart: z.array(
@@ -58,14 +58,6 @@ function sanitize(str: string): string {
 }
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  if (rateLimited(ip)) {
-    return NextResponse.json(
-      { error: "We're handling a lot of orders right now. Please try again in about 30 seconds." },
-      { status: 429 }
-    )
-  }
-
   try {
     const raw = await req.json()
     const parsed = schema.safeParse(raw)
@@ -108,8 +100,13 @@ export async function POST(req: Request) {
         : undefined,
     })
 
-    // Return full order context for the receipt card
-    const subtotal = body.cart.reduce((s, i) => s + i.price * i.quantity, 0)
+    const cartSubtotal = body.cart.reduce((s, i) => s + i.price * i.quantity, 0)
+    const pricing = resolveReceiptTotals({
+      orderResult,
+      subtotal: cartSubtotal,
+      items: body.cart.map((i) => ({ price: i.price, quantity: i.quantity })),
+    })
+
     return NextResponse.json({
       orderResult,
       items: body.cart.map((i) => ({
@@ -118,8 +115,9 @@ export async function POST(req: Request) {
         quantity: i.quantity,
       })),
       recipient: sanitizedRecipient,
-      subtotal,
-      total: subtotal, // Delivery fee comes from the MCP response
+      subtotal: pricing.subtotal,
+      deliveryFee: pricing.deliveryFee,
+      total: pricing.total,
       senderName: body.senderName,
       senderEmail: body.senderEmail,
       giftMessage: body.giftMessage,

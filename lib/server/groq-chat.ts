@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk'
 import type { KaprukaMCPClient } from '@/lib/server/mcp-client'
+import { sanitizeCreateOrderArgs, sanitizeToolOutput } from '@/lib/server/mcp-order'
 
 const GROQ_TOOLS = [
   'kapruka_search_products',
@@ -17,7 +18,8 @@ function groqToolDefs() {
       type: 'function' as const,
       function: {
         name: 'kapruka_search_products',
-        description: 'Search Kapruka catalog',
+        description:
+          'Search Kapruka catalog ONLY when the customer wants to browse or buy. Skip for advice, emotional support, or comparing items already shown.',
         parameters: {
           type: 'object',
           properties: { q: { type: 'string' }, category: { type: 'string' }, max_price: { type: 'number' }, limit: { type: 'number' } },
@@ -61,8 +63,19 @@ function groqToolDefs() {
       type: 'function' as const,
       function: {
         name: 'kapruka_create_order',
-        description: 'Create order',
-        parameters: { type: 'object', properties: { cart: { type: 'array' }, recipient: { type: 'object' }, delivery: { type: 'object' }, sender: { type: 'object' }, gift_message: { type: 'string' } } },
+        description:
+          'Create order. sender{name} only. delivery{address,city,date,instructions?}',
+        parameters: {
+          type: 'object',
+          properties: {
+            cart: { type: 'array' },
+            recipient: { type: 'object' },
+            delivery: { type: 'object' },
+            sender: { type: 'object' },
+            gift_message: { type: 'string' },
+          },
+          required: ['cart', 'recipient', 'delivery', 'sender'],
+        },
       },
     },
     {
@@ -86,7 +99,7 @@ export async function runGroqChat(opts: {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
   mcp: KaprukaMCPClient
   onStatus: (name: string, args: Record<string, unknown>) => void
-  onOrderResult?: (result: { url: string | null; ref: string | null; expiresAt: string | null }) => void
+  onOrderPreview?: (args: Record<string, unknown>) => void
 }): Promise<string> {
   const key = process.env.GROQ_API_KEY
   if (!key) throw new Error('GROQ_API_KEY not configured')
@@ -124,23 +137,27 @@ export async function runGroqChat(opts: {
           /* empty */
         }
         opts.onStatus(name, args)
-        const output = await opts.mcp.callTool(name, args)
+        const toolArgs =
+          name === 'kapruka_create_order' ? sanitizeCreateOrderArgs(args) : args
+
         if (name === 'kapruka_create_order') {
-          try {
-            const j = JSON.parse(output) as {
-              checkout_url?: string
-              order_ref?: string
-              expires_at?: string
-            }
-            opts.onOrderResult?.({
-              url: j.checkout_url ?? null,
-              ref: j.order_ref ?? null,
-              expiresAt: j.expires_at ?? null,
-            })
-          } catch {
-            /* ignore */
-          }
+          opts.onOrderPreview?.(toolArgs)
+          groqMessages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify({
+              status: 'preview_shown',
+              message:
+                'Order review card shown to the customer. They must tap Confirm before the payment link is generated.',
+            }),
+          })
+          continue
         }
+
+        const output = sanitizeToolOutput(
+          name,
+          await opts.mcp.callTool(name, toolArgs)
+        )
         groqMessages.push({
           role: 'tool',
           tool_call_id: call.id,

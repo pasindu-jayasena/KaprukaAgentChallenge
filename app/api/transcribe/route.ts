@@ -1,5 +1,3 @@
-import { rateLimited } from '@/lib/server/rate-limit'
-
 export const runtime = 'nodejs'
 
 const WHISPER_LANG: Record<string, string> = {
@@ -12,12 +10,6 @@ export async function POST(req: Request) {
   const key = process.env.GROQ_API_KEY
   if (!key) {
     return Response.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 })
-  }
-
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  if (rateLimited(ip)) {
-    return Response.json({ error: 'Too many requests' }, { status: 429 })
   }
 
   try {

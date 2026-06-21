@@ -1,14 +1,17 @@
 import { buildSystemPrompt } from '@/lib/prompts/anu-system'
 import { KaprukaMCPClient } from '@/lib/server/mcp-client'
-import { rateLimited } from '@/lib/server/rate-limit'
 import { runClaudeChat, isClaudeAvailable, isClaudeQuotaError } from '@/lib/server/claude-chat'
 import { runGroqChat } from '@/lib/server/groq-chat'
 import { chatRequestSchema } from '@/schemas/chat-request'
 import { getDeviceId } from '@/lib/server/session-cookies'
-import { getProfile, updateProfile, extractInterests } from '@/lib/server/user-memory'
-import { createKaprukaOrder } from '@/lib/checkout'
+import { getProfile, updateProfile } from '@/lib/server/user-memory'
+import { getCheckoutPreview } from '@/lib/checkout-preview'
+import { orderArgsToCheckoutDetails } from '@/lib/order-args'
 import { parseCheckoutDetails } from '@/lib/parse-checkout-details'
-import type { CartItem, OrderResult, ChatPayload, CheckoutDetailsInput, SavedCheckoutProfile } from '@/types'
+import { messagesForModel } from '@/lib/conversation-context'
+import { isNonShoppingTurn } from '@/lib/chat-intent'
+import { sanitizeAssistantText } from '@/lib/server/mcp-order'
+import type { CartItem, ChatPayload, CheckoutDetailsInput } from '@/types'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
@@ -61,6 +64,7 @@ function stripBlocks(text: string) {
     .replace(/<ORDER_TRACKING>[\s\S]*?<\/ORDER_TRACKING>/gi, '')
     .replace(/<function[\s\S]*?<\/function>/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/CHECKOUT_DETAILS:[\s\S]*?(?=\n\n|$)/gi, '')
     .trim()
 }
 
@@ -80,7 +84,10 @@ function buildPayload(fullText: string): ChatPayload {
   const chips = parseChips(text) ?? undefined
 
   const trio = parseBlock(text, 'PRODUCT_TRIO')
-  if (trio.data) return { type: 'product_trio', trio: trio.data, chips }
+  if (trio.data) {
+    const rawText = stripBlocks(text)
+    return { type: 'product_trio', trio: trio.data, rawText: rawText || undefined, chips }
+  }
 
   const plan = parseBlock(text, 'PLAN_BOARD')
   if (plan.data) return { type: 'plan_board', plan: plan.data, chips }
@@ -101,90 +108,29 @@ function buildPayload(fullText: string): ChatPayload {
   }
 }
 
-/** Extract plan board data from the LLM response text for the checkout receipt */
-function extractPlanBoardContext(responseText: string): {
-  items?: Array<{ id?: string; name: string; price: number; quantity: number; image?: string | null }>
-  recipient?: { name: string; phone: string; city: string; address: string; date: string }
-  subtotal?: number
-  deliveryFee?: number
-  total?: number
-  giftMessage?: string
-  senderName?: string
-  senderEmail?: string
-  specialInstructions?: string
-} | null {
-  const plan = parseBlock(responseText, 'PLAN_BOARD')
-  if (!plan.data) return null
-
-  const d = plan.data as Record<string, unknown>
-  const items = Array.isArray(d.items)
-    ? d.items.map((i: Record<string, unknown>) => ({
-        name: String(i.name || ''),
-        price: Number(i.price) || 0,
-        quantity: Number(i.quantity) || 1,
-        image: (i.image_url as string) || null,
-      }))
-    : undefined
-
-  const delivery = d.delivery as Record<string, unknown> | undefined
-  const recipient = d.recipient as Record<string, unknown> | undefined
-  const recipientData = recipient && delivery
-    ? {
-        name: String(recipient.name || ''),
-        phone: String(recipient.phone || ''),
-        city: String(delivery.city || ''),
-        address: String(recipient.address || delivery.address || ''),
-        date: String(delivery.date || ''),
-      }
-    : undefined
-
-  return {
-    items,
-    recipient: recipientData,
-    subtotal: Number(d.subtotal) || undefined,
-    deliveryFee: Number(d.delivery_fee) || undefined,
-    total: Number(d.total) || undefined,
-    giftMessage: d.gift_message ? String(d.gift_message) : undefined,
-    senderName: d.sender_name ? String(d.sender_name) : undefined,
-    senderEmail: d.sender_email ? String(d.sender_email) : undefined,
-    specialInstructions: d.special_instructions ? String(d.special_instructions) : undefined,
-  }
-}
-
-function buildCheckoutPayload(
-  orderResult: OrderResult,
+function buildOrderPreviewPayload(
   cart: CartItem[],
-  responseText: string,
-  checkoutDetails?: CheckoutDetailsInput
+  details: CheckoutDetailsInput,
+  preview: Awaited<ReturnType<typeof getCheckoutPreview>>,
+  text?: string
 ): ChatPayload {
-  const planContext = extractPlanBoardContext(responseText)
-  const subtotal =
-    planContext?.subtotal ?? cart.reduce((s, i) => s + i.price * i.quantity, 0)
-
   return {
-    type: 'checkout',
-    orderResult,
-    text: stripBlocks(responseText) || 'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉',
-    items:
-      planContext?.items ??
-      cart.map((i) => ({
-        id: i.id,
-        name: i.name,
-        price: i.price,
-        quantity: i.quantity,
-        image: i.image,
-        url: i.url,
-      })),
-    cartRestore: cart.map((i) => ({ ...i })),
-    recipient: checkoutDetails?.recipient ?? planContext?.recipient,
-    subtotal,
-    deliveryFee: planContext?.deliveryFee,
-    total: planContext?.total ?? subtotal,
-    giftMessage: checkoutDetails?.giftMessage ?? planContext?.giftMessage,
-    senderName: checkoutDetails?.senderName ?? planContext?.senderName,
-    senderEmail: checkoutDetails?.senderEmail ?? planContext?.senderEmail,
-    specialInstructions:
-      checkoutDetails?.specialInstructions ?? planContext?.specialInstructions,
+    type: 'order_preview',
+    text:
+      text ??
+      'Please review your order below — when everything looks good, tap Confirm to get your Kapruka payment link.',
+    details,
+    items: cart.map((i) => ({
+      id: i.id,
+      name: i.name,
+      price: i.price,
+      quantity: i.quantity,
+      image: i.image,
+    })),
+    subtotal: preview.subtotal,
+    deliveryFee: preview.deliveryFee,
+    total: preview.total,
+    deliveryNote: preview.deliveryNote,
   }
 }
 
@@ -201,22 +147,6 @@ export async function POST(req: Request) {
         },
       }) + '\n',
       { status: 500, headers: { 'Content-Type': 'application/x-ndjson' } }
-    )
-  }
-
-  // Rate limiting
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
-  if (rateLimited(ip)) {
-    return new Response(
-      JSON.stringify({
-        type: 'final',
-        payload: {
-          type: 'chat',
-          text: "You're moving fast! Give me a minute, then try again.",
-        },
-      }) + '\n',
-      { status: 429, headers: { 'Content-Type': 'application/x-ndjson' } }
     )
   }
 
@@ -292,38 +222,36 @@ export async function POST(req: Request) {
             recipient: p.recipient,
             giftMessage: p.giftMessage ?? undefined,
             specialInstructions: p.specialInstructions ?? undefined,
-          })) ?? null
+          })) ?? null,
+          messages
         )
-        let orderResult: OrderResult | null = null
+        let pendingOrderArgs: Record<string, unknown> | null = null
         let responseText = ''
 
-        // Structured checkout from chat form — same path as manual cart checkout
+        // Structured checkout from chat — show review card first, not payment slip
         if (checkoutDetails && cart.length > 0) {
           emit({
             type: 'status',
-            icon: 'lock',
-            key: 'order',
-            label: 'Locking in your order',
+            icon: 'search',
+            key: 'delivery',
+            label: 'Checking delivery fee',
           })
           try {
-            orderResult = await createKaprukaOrder({
-              cart,
-              recipient: checkoutDetails.recipient,
-              senderName: checkoutDetails.senderName,
-              senderEmail: checkoutDetails.senderEmail,
-              giftMessage: checkoutDetails.giftMessage,
-              specialInstructions: checkoutDetails.specialInstructions,
+            const preview = await getCheckoutPreview(cart, checkoutDetails)
+            emit({
+              type: 'final',
+              payload: buildOrderPreviewPayload(cart, checkoutDetails, preview),
             })
-            responseText =
-              'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉'
-          } catch (orderErr) {
-            const msg =
-              orderErr instanceof Error ? orderErr.message : 'Checkout failed'
+            clearInterval(heartbeatTimer)
+            controller.close()
+            return
+          } catch (previewErr) {
+            console.error('Checkout preview error:', previewErr)
             emit({
               type: 'final',
               payload: {
                 type: 'chat',
-                text: msg.replace(/^Order failed:\s*/i, '').trim() || 'Checkout failed. Please check your details and try again.',
+                text: 'I could not load your order summary. Please check your details and try again.',
               },
             })
             clearInterval(heartbeatTimer)
@@ -332,27 +260,26 @@ export async function POST(req: Request) {
           }
         }
 
+        const onOrderPreview = (args: Record<string, unknown>) => {
+          pendingOrderArgs = args
+        }
+
         const onStatus = (name: string, args: Record<string, unknown>) => {
           emit({ type: 'status', ...statusLabel(name, args) })
         }
 
-        const onOrderResult = (r: OrderResult) => {
-          orderResult = r
-        }
+        const modelMessages = messagesForModel(messages)
 
         // Primary: Claude via tokenlb.net (skip if order already created from form)
         let usedBackup = false
-        if (!orderResult && hasClaude) {
+        if (hasClaude) {
           try {
             responseText = await runClaudeChat({
               systemPrompt,
-              messages: messages.map((m) => ({
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-              })),
+              messages: modelMessages,
               mcp,
               onStatus,
-              onOrderResult,
+              onOrderPreview,
             })
           } catch (claudeErr) {
             console.error('[Claude Error]', claudeErr)
@@ -365,22 +292,17 @@ export async function POST(req: Request) {
         }
 
         // Backup: Groq (also handles voice)
-        if (!orderResult && (!hasClaude || usedBackup)) {
+        if (!hasClaude || usedBackup) {
           if (!hasGroq) throw new Error('Claude failed and Groq not configured')
           console.log('[Fallback] Using Groq backup')
           responseText = await runGroqChat({
             systemPrompt,
-            messages: messages.map((m) => ({
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-            })),
+            messages: modelMessages,
             mcp,
             onStatus: (name, args) => {
               emit({ type: 'status', ...statusLabel(name, args) })
             },
-            onOrderResult: (r) => {
-              orderResult = r
-            },
+            onOrderPreview,
           })
         }
 
@@ -391,32 +313,32 @@ export async function POST(req: Request) {
           label: 'Putting it together',
         })
 
-        let payload: ChatPayload = buildPayload(responseText)
+        let payload: ChatPayload = buildPayload(sanitizeAssistantText(responseText))
 
-        if (orderResult) {
-          try {
-            const orderedNames = cart.map((i) => i.name)
-            const recipientName =
-              checkoutDetails?.recipient.name ?? extractPlanBoardContext(responseText)?.recipient?.name
-            const city =
-              checkoutDetails?.recipient.city ?? extractPlanBoardContext(responseText)?.recipient?.city
+        if (
+          payload.type === 'product_trio' &&
+          lastUserMessage &&
+          isNonShoppingTurn(lastUserMessage.content, messages)
+        ) {
+          const answer =
+            payload.rawText?.trim() ||
+            payload.trio?.context?.trim() ||
+            'Tell me a bit more — happy to help.'
+          payload = { type: 'chat', text: answer, chips: payload.chips }
+        }
 
-            updateProfile(deviceId, {
-              orderCount: userProfile.orderCount + 1,
-              recentItems: orderedNames,
-              interests: extractInterests(orderedNames),
-              ...(recipientName ? { recipientNames: [recipientName] } : {}),
-              ...(city ? { preferredCity: city } : {}),
-            })
-          } catch {
-            // Profile update failure is non-critical
-          }
-
-          payload = buildCheckoutPayload(
-            orderResult,
-            cart,
-            responseText,
+        if (pendingOrderArgs && cart.length > 0) {
+          const details = orderArgsToCheckoutDetails(
+            pendingOrderArgs,
             checkoutDetails ?? undefined
+          )
+          const preview = await getCheckoutPreview(cart, details)
+          payload = buildOrderPreviewPayload(
+            cart,
+            details,
+            preview,
+            stripBlocks(sanitizeAssistantText(responseText)) ||
+              'Please review your order below — tap Confirm when ready.'
           )
         }
         emit({ type: 'final', payload })

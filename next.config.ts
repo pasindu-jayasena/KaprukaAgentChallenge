@@ -22,7 +22,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",
-      "connect-src 'self' https://mcp.kapruka.com https://tokenlb.net",
+      "connect-src 'self' https://mcp.kapruka.com https://tokenlb.net https://api.groq.com",
       "frame-ancestors 'none'",
     ].join('; '),
   },

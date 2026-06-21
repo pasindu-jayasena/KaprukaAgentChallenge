@@ -55,7 +55,7 @@ export function WelcomeGuide() {
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
                   <MessageCircle className="h-3.5 w-3.5" />
                 </div>
-                <span><strong className="text-[var(--text-primary)]">Ask anything</strong> in English, Sinhala, or Tamil.</span>
+                <span><strong className="text-[var(--text-primary)]">Ask anything</strong> in English, Sinhala, Tamil, Tanglish, or Singlish.</span>
               </li>
               <li className="flex items-start gap-3 text-sm text-[var(--text-secondary)]">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400">

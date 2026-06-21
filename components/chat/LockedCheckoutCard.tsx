@@ -5,6 +5,17 @@ import { Copy, ExternalLink, CheckCircle2, RotateCcw } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useCartStore } from '@/store/cartStore'
 import type { CartItem, OrderResult } from '@/types'
+import { resolveReceiptTotals } from '@/lib/parse-order-result'
+import {
+  slipBody,
+  slipBtnPrimary,
+  slipBtnSecondary,
+  slipHeader,
+  slipInset,
+  slipRowLabel,
+  slipRowValue,
+  slipShell,
+} from '@/components/chat/slip-styles'
 
 interface Props {
   orderResult: OrderResult
@@ -119,90 +130,91 @@ export function LockedCheckoutCard({
   if (senderEmail) {
     detailRows.push({ label: r.senderEmail, value: senderEmail })
   }
-  detailRows.push({
-    label: r.personalMessage,
-    value: giftMessage?.trim() || notSpecified,
+  if (giftMessage?.trim()) {
+    detailRows.push({
+      label: r.personalMessage,
+      value: giftMessage.trim(),
+    })
+  }
+
+  const pricing = resolveReceiptTotals({
+    orderResult,
+    subtotal,
+    deliveryFee,
+    total,
+    items,
   })
 
   return (
     <div
-      className={`w-full max-w-sm overflow-hidden rounded-2xl border bg-[var(--bg-surface)] shadow-lg transition-opacity ${
-        cancelled ? 'border-[var(--border-light)] opacity-75' : 'border-[var(--border-light)]'
+      className={`${slipShell} transition-opacity ${
+        cancelled ? 'opacity-75' : ''
       }`}
     >
       <div
-        className={`relative overflow-hidden bg-gradient-to-r from-[#401F60] to-[#593082] p-5 text-white ${
+        className={`relative overflow-hidden bg-gradient-to-r from-[#401F60] to-[#593082] ${slipHeader} text-white ${
           cancelled ? 'opacity-60' : ''
         }`}
       >
-        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-        <div className="relative z-10 mb-2 flex items-center gap-3">
-          <CheckCircle2 className="h-6 w-6 text-[#FCE22A]" />
-          <h3 className="font-display text-xl font-bold">
-            {cancelled ? 'Order cancelled' : 'Order locked!'}
-          </h3>
+        <div className="relative z-10 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-[#FCE22A]" />
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold leading-tight">
+              {cancelled ? 'Order cancelled' : 'Order locked!'}
+            </h3>
+            {text && (
+              <p className={`text-xs leading-snug ${cancelled ? 'line-through text-white/60' : 'text-white/75'}`}>
+                {text}
+              </p>
+            )}
+          </div>
         </div>
-        {text && (
-          <p className={`relative z-10 text-sm ${cancelled ? 'line-through text-white/60' : 'text-white/80'}`}>
-            {text}
-          </p>
-        )}
         {orderResult.ref && (
-          <div className="relative z-10 mt-2 flex w-fit items-center gap-2 rounded-lg bg-black/20 p-2">
-            <span className="font-mono text-sm text-white/90">Ref: {orderResult.ref}</span>
+          <div className="relative z-10 mt-1.5 flex w-full items-center gap-1.5 rounded-md bg-black/20 px-2 py-1">
+            <span className="min-w-0 truncate font-mono text-[10px] text-white/90">
+              Ref: {orderResult.ref}
+            </span>
             <button
               type="button"
               onClick={copyRef}
-              className="rounded p-1 transition-colors hover:bg-white/10"
+              className="shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
               title="Copy Reference"
             >
-              <Copy className="h-3.5 w-3.5 text-white/70" />
+              <Copy className="h-3 w-3 text-white/70" />
             </button>
-            {copied && <span className="ml-1 text-xs text-[#FCE22A]">Copied!</span>}
+            {copied && <span className="shrink-0 text-[10px] text-[#FCE22A]">Copied!</span>}
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-4 p-5">
-        <div className="rounded-xl border border-[var(--border-light)] bg-[var(--bg-page)] p-4 text-sm">
+      <div className={`flex flex-col ${slipBody}`}>
+        <div className={`${slipInset} text-xs`}>
           {detailRows.map((row) => (
-            <div key={row.label} className="border-b border-[var(--border-light)] py-2.5 last:border-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
-                {row.label}
-              </p>
-              <p className="mt-1 whitespace-pre-wrap font-medium text-[var(--text-primary)]">
-                {row.value}
-              </p>
+            <div key={row.label} className="border-b border-[var(--border-light)] py-1.5 last:border-0">
+              <p className={slipRowLabel}>{row.label}</p>
+              <p className={`${slipRowValue} whitespace-pre-wrap`}>{row.value}</p>
             </div>
           ))}
         </div>
 
-        {(subtotal != null || deliveryFee != null || total != null) && (
-          <div className="space-y-1.5 text-sm">
-            {subtotal != null && (
-              <div className="flex justify-between text-[var(--text-secondary)]">
-                <span>Subtotal</span>
-                <span>Rs. {subtotal.toLocaleString()}</span>
-              </div>
-            )}
-            {deliveryFee != null && deliveryFee > 0 && (
-              <div className="flex justify-between text-[var(--text-secondary)]">
-                <span>Delivery</span>
-                <span>Rs. {deliveryFee.toLocaleString()}</span>
-              </div>
-            )}
-            {total != null && (
-              <div className="mt-1 flex justify-between border-t border-[var(--border-light)] pt-1 font-bold text-[var(--text-primary)]">
-                <span>Total</span>
-                <span>Rs. {total.toLocaleString()}</span>
-              </div>
-            )}
+        <div className="space-y-0.5 text-xs">
+          <div className="flex justify-between text-[var(--text-secondary)]">
+            <span>Subtotal</span>
+            <span>Rs. {pricing.subtotal.toLocaleString()}</span>
           </div>
-        )}
+          <div className="flex justify-between text-[var(--text-secondary)]">
+            <span>Delivery</span>
+            <span>Rs. {pricing.deliveryFee.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between border-t border-[var(--border-light)] pt-1 text-xs font-bold text-[var(--text-primary)]">
+            <span>Total</span>
+            <span>Rs. {pricing.total.toLocaleString()}</span>
+          </div>
+        </div>
 
         {orderResult.url && !cancelled && (
-          <div className="mt-1 text-center">
-            <p className="mb-2 text-xs font-medium text-[var(--text-muted)]">
+          <div className="text-center">
+            <p className="mb-1.5 text-[10px] font-medium text-[var(--text-muted)]">
               Expires in{' '}
               <span className="font-bold tabular-nums text-[#401F60] dark:text-[#FCE22A]">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
@@ -212,10 +224,10 @@ export function LockedCheckoutCard({
               href={orderResult.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#FCE22A] px-4 py-3.5 font-bold text-[#401F60] shadow-sm transition-all hover:bg-[#FDEB6B] hover:shadow-md active:scale-[0.98]"
+              className={`flex w-full items-center justify-center gap-1.5 ${slipBtnPrimary} active:scale-[0.98]`}
             >
-              💳 Pay now on Kapruka.com
-              <ExternalLink className="h-4 w-4" />
+              Pay on Kapruka.com
+              <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         )}
@@ -224,16 +236,16 @@ export function LockedCheckoutCard({
           <button
             type="button"
             onClick={restoreToCart}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--border-light)] py-2.5 text-sm font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-page)]"
+            className={`flex w-full items-center justify-center gap-1.5 ${slipBtnSecondary}`}
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3 w-3" />
             Cancel & return to cart
           </button>
         ) : null}
 
         {cancelled && (
-          <p className="text-center text-xs text-[var(--text-muted)]">
-            Items restored to your cart. You can edit and checkout again.
+          <p className="text-center text-[10px] text-[var(--text-muted)]">
+            Items restored to your cart.
           </p>
         )}
       </div>

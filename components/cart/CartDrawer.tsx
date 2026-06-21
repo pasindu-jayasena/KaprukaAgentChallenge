@@ -6,7 +6,7 @@ import { X, Minus, Plus, Trash2, ShoppingBag, CheckSquare, Square } from 'lucide
 import { useCartStore } from '@/store/cartStore'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { CheckoutDetailsFields } from '@/components/cart/CheckoutDetailsFields'
-import { buildCheckoutDetailsMessage } from '@/lib/checkout-profile'
+import { OrderConfirmCard } from '@/components/cart/OrderConfirmCard'
 import type { CheckoutSuccessPayload, CheckoutDetailsInput, OrderResult } from '@/types'
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
   onCheckoutSuccess?: (payload: CheckoutSuccessPayload) => void
 }
 
-export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess }: Props) {
+export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
   const { messages } = useLanguage()
   const {
     items,
@@ -31,6 +31,14 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
   } = useCartStore()
 
   const [tab, setTab] = useState<'items' | 'delivery'>('items')
+  const [deliveryStep, setDeliveryStep] = useState<'form' | 'confirm'>('form')
+  const [pendingDetails, setPendingDetails] = useState<CheckoutDetailsInput | null>(null)
+  const [preview, setPreview] = useState<{
+    subtotal: number
+    deliveryFee: number | null
+    total: number | null
+    deliveryNote?: string
+  } | null>(null)
   const [processing, setProcessing] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
@@ -47,7 +55,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
     setProcessing(true)
     setCheckoutError(null)
     try {
-      const res = await fetch('/api/checkout', {
+      const res = await fetch('/api/checkout/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -57,6 +65,43 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
           senderEmail: details.senderEmail,
           giftMessage: details.giftMessage,
           specialInstructions: details.specialInstructions,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCheckoutError(data.error ?? 'Could not preview order. Please try again.')
+        return
+      }
+      setPendingDetails(details)
+      setPreview({
+        subtotal: data.subtotal,
+        deliveryFee: data.deliveryFee,
+        total: data.total,
+        deliveryNote: data.deliveryNote,
+      })
+      setDeliveryStep('confirm')
+    } catch {
+      setCheckoutError('A network error occurred. Please try again.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleConfirmOrder = async () => {
+    if (!pendingDetails || checkoutItems.length === 0) return
+    setProcessing(true)
+    setCheckoutError(null)
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cart: checkoutItems,
+          recipient: pendingDetails.recipient,
+          senderName: pendingDetails.senderName,
+          senderEmail: pendingDetails.senderEmail,
+          giftMessage: pendingDetails.giftMessage,
+          specialInstructions: pendingDetails.specialInstructions,
         }),
       })
       const data = await res.json()
@@ -77,6 +122,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
           cartRestore: snapshot,
           recipient: data.recipient,
           subtotal: data.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+          deliveryFee: data.deliveryFee,
           total: data.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
           giftMessage: data.giftMessage,
           senderName: data.senderName,
@@ -85,6 +131,9 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
         })
 
         setTab('items')
+        setDeliveryStep('form')
+        setPendingDetails(null)
+        setPreview(null)
         onClose()
       } else if (data.error) {
         setCheckoutError(data.error)
@@ -98,12 +147,11 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
     }
   }
 
-  const handleViaAnu = (details: CheckoutDetailsInput) => {
-    onCheckoutViaChat?.(buildCheckoutDetailsMessage(details, checkoutItems, 'Selected Items'))
-    onClose()
-  }
-
   const handleClose = () => {
+    setDeliveryStep('form')
+    setPendingDetails(null)
+    setPreview(null)
+    setCheckoutError(null)
     onClose()
   }
 
@@ -154,6 +202,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
                     type="button"
                     onClick={() => {
                       if (t === 'delivery' && checkoutItems.length === 0) return
+                      if (t === 'delivery') setDeliveryStep('form')
                       setTab(t)
                     }}
                     className={`flex-1 py-3.5 text-sm font-bold transition-colors ${
@@ -240,28 +289,52 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess
                 )
               ) : (
                 <div className="p-5">
-                  {/* Mini Summary */}
-                  <div className="mb-6 p-3 rounded-lg bg-[#401F60]/5 dark:bg-white/5 border border-[#401F60]/10 dark:border-white/10">
-                    <p className="text-xs font-bold text-[#401F60] dark:text-white/80 uppercase tracking-wider mb-2">Order Summary ({checkoutItems.length} items)</p>
-                    <ul className="text-sm space-y-1 text-[var(--text-secondary)]">
-                      {checkoutItems.map(i => (
-                        <li key={i.id} className="flex justify-between truncate">
-                          <span className="truncate pr-2">{i.quantity}x {i.name}</span>
-                          <span className="shrink-0 font-medium">Rs. {(i.price * i.quantity).toLocaleString()}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-2 pt-2 border-t border-[#401F60]/10 dark:border-white/10 flex justify-between font-bold text-[#401F60] dark:text-white">
-                      <span>Subtotal</span>
-                      <span>Rs. {selectedTotal().toLocaleString()}</span>
-                    </div>
-                  </div>
+                  {deliveryStep === 'confirm' && pendingDetails && preview ? (
+                    <OrderConfirmCard
+                      items={checkoutItems.map((i) => ({
+                        id: i.id,
+                        name: i.name,
+                        price: i.price,
+                        quantity: i.quantity,
+                        image: i.image,
+                      }))}
+                      details={pendingDetails}
+                      subtotal={preview.subtotal}
+                      deliveryFee={preview.deliveryFee}
+                      total={preview.total}
+                      deliveryNote={preview.deliveryNote}
+                      processing={processing}
+                      onConfirm={handleConfirmOrder}
+                      onEdit={() => {
+                        setDeliveryStep('form')
+                        setCheckoutError(null)
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <div className="mb-6 p-3 rounded-lg bg-[#401F60]/5 dark:bg-white/5 border border-[#401F60]/10 dark:border-white/10">
+                        <p className="text-xs font-bold text-[#401F60] dark:text-white/80 uppercase tracking-wider mb-2">Order Summary ({checkoutItems.length} items)</p>
+                        <ul className="text-sm space-y-1 text-[var(--text-secondary)]">
+                          {checkoutItems.map(i => (
+                            <li key={i.id} className="flex justify-between truncate">
+                              <span className="truncate pr-2">{i.quantity}x {i.name}</span>
+                              <span className="shrink-0 font-medium">Rs. {(i.price * i.quantity).toLocaleString()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-2 pt-2 border-t border-[#401F60]/10 dark:border-white/10 flex justify-between font-bold text-[#401F60] dark:text-white">
+                          <span>Subtotal</span>
+                          <span>Rs. {selectedTotal().toLocaleString()}</span>
+                        </div>
+                      </div>
 
-                  <CheckoutDetailsFields
-                    variant="cart"
-                    processing={processing}
-                    onSubmit={handleDeliverySubmit}
-                  />
+                      <CheckoutDetailsFields
+                        variant="cart"
+                        processing={processing}
+                        onSubmit={handleDeliverySubmit}
+                      />
+                    </>
+                  )}
 
                   {checkoutError && (
                     <div className="mt-4 rounded-xl border border-red-500/20 bg-red-50 p-4 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400 font-medium">

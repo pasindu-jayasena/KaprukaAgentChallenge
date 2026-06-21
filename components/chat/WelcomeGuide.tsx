@@ -38,7 +38,7 @@ export function WelcomeGuide() {
 
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-base font-bold text-[var(--text-primary)]">
-                👋 Welcome! Here's how Anu works:
+                👋 Welcome! Here&apos;s how Anu works:
               </h3>
               <button
                 type="button"

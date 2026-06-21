@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Gift } from 'lucide-react'
+import { Calendar, Gift } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useRecipientStore } from '@/store/recipientStore'
 import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
@@ -17,7 +17,10 @@ interface Props {
   initialGiftMessage?: string
 }
 
-function profileToForm(profile: SavedCheckoutProfile): CheckoutDetailsInput {
+function profileToForm(
+  profile: SavedCheckoutProfile,
+  deliveryDate: string
+): CheckoutDetailsInput {
   return {
     senderName: profile.senderName,
     senderEmail: profile.senderEmail,
@@ -25,7 +28,7 @@ function profileToForm(profile: SavedCheckoutProfile): CheckoutDetailsInput {
     specialInstructions: profile.specialInstructions,
     recipient: {
       ...profile.recipient,
-      date: new Date().toISOString().slice(0, 10),
+      date: deliveryDate,
     },
   }
 }
@@ -58,7 +61,7 @@ export function CheckoutDetailsFields({
   initialSenderName = '',
   initialGiftMessage = '',
 }: Props) {
-  const { messages } = useLanguage()
+  const { messages, format } = useLanguage()
   const profiles = useRecipientStore((s) => s.profiles)
   const saveProfile = useRecipientStore((s) => s.saveProfile)
   const findByRecipientName = useRecipientStore((s) => s.findByRecipientName)
@@ -67,6 +70,9 @@ export function CheckoutDetailsFields({
   const [step, setStep] = useState<Step>(profiles.length > 0 ? 'recipient-name' : 'full-form')
   const [recipientNameInput, setRecipientNameInput] = useState('')
   const [matchedProfile, setMatchedProfile] = useState<SavedCheckoutProfile | null>(null)
+  const [savedDeliveryDate, setSavedDeliveryDate] = useState(
+    () => new Date().toISOString().slice(0, 10)
+  )
   const [form, setForm] = useState<CheckoutDetailsInput>(() =>
     emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage)
   )
@@ -83,6 +89,7 @@ export function CheckoutDetailsFields({
     const match = findByRecipientName(name)
     if (match) {
       setMatchedProfile(match)
+      setSavedDeliveryDate(new Date().toISOString().slice(0, 10))
       setStep('confirm-saved')
     } else {
       setForm(emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage, name))
@@ -92,7 +99,12 @@ export function CheckoutDetailsFields({
 
   const confirmSaved = () => {
     if (!matchedProfile) return
-    setForm(profileToForm(matchedProfile))
+    const payload = profileToForm(matchedProfile, savedDeliveryDate)
+    if (variant === 'chat') {
+      onSubmit(payload)
+      return
+    }
+    setForm(payload)
     setStep('full-form')
   }
 
@@ -180,8 +192,9 @@ export function CheckoutDetailsFields({
     return (
       <div className="space-y-3 rounded-xl border border-[#401F60]/20 bg-[#401F60]/5 p-4 text-sm dark:border-white/20 dark:bg-white/5">
         <p className="font-semibold text-[var(--text-primary)]">
-          {messages.form.confirmSavedTitle.replace('{name}', p.recipient.name)}
+          {format(messages.form.confirmSavedTitle, { name: p.recipient.name })}
         </p>
+        <p className="text-xs text-[var(--text-muted)]">{messages.form.confirmSavedSubtitle}</p>
         <dl className="space-y-2 text-xs text-[var(--text-secondary)]">
           <div>
             <dt className="font-bold uppercase tracking-wide text-[var(--text-muted)]">
@@ -203,12 +216,6 @@ export function CheckoutDetailsFields({
             </dt>
             <dd className="text-[var(--text-primary)]">{p.senderName}</dd>
           </div>
-          <div>
-            <dt className="font-bold uppercase tracking-wide text-[var(--text-muted)]">
-              {messages.form.senderEmail}
-            </dt>
-            <dd className="text-[var(--text-primary)]">{p.senderEmail}</dd>
-          </div>
           {p.giftMessage && (
             <div>
               <dt className="font-bold uppercase tracking-wide text-[var(--text-muted)]">
@@ -218,18 +225,33 @@ export function CheckoutDetailsFields({
             </div>
           )}
         </dl>
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div>
+          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">
+            <Calendar className="h-3.5 w-3.5" />
+            {messages.form.date}
+          </label>
+          <input
+            required
+            type="date"
+            value={savedDeliveryDate}
+            onChange={(e) => setSavedDeliveryDate(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row">
           <button
             type="button"
             onClick={confirmSaved}
-            className="rounded-full bg-[#401F60] px-4 py-2 text-xs font-semibold text-white"
+            disabled={processing}
+            className="flex-1 rounded-full bg-[#FCE22A] py-2.5 text-xs font-bold text-[#401F60] disabled:opacity-50 sm:text-sm"
           >
-            {messages.form.detailsCorrect}
+            {processing ? messages.cart.processing : messages.form.detailsCorrect}
           </button>
           <button
             type="button"
             onClick={rejectSaved}
-            className="rounded-full border border-[var(--border-light)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)]"
+            disabled={processing}
+            className="flex-1 rounded-full border border-[var(--border-light)] px-4 py-2.5 text-xs font-semibold text-[var(--text-secondary)] disabled:opacity-50 sm:text-sm"
           >
             {messages.form.updateDetails}
           </button>
@@ -353,7 +375,7 @@ export function CheckoutDetailsFields({
         disabled={processing}
         className="w-full rounded-xl bg-kapruka-header py-2.5 text-sm font-medium text-white disabled:opacity-50"
       >
-        {processing ? messages.cart.processing : messages.cart.checkoutNow}
+        {processing ? messages.cart.processing : messages.cart.reviewOrder}
       </button>
     </form>
   )

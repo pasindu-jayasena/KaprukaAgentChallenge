@@ -184,7 +184,7 @@ export function RecentSessionsSidebar({
 
                   {s.preview && (
                     <span className={`line-clamp-1 w-[90%] text-left text-xs italic ${isActive ? 'text-white/70' : 'text-[var(--text-secondary)]'}`}>
-                      "{s.preview}"
+                      &ldquo;{s.preview}&rdquo;
                     </span>
                   )}
 

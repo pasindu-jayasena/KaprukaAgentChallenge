@@ -33,10 +33,22 @@ declare global {
   }
 }
 
+function detectSpeechSupport(): boolean {
+  if (typeof window === 'undefined') return false
+  const canRecord =
+    !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+  return canRecord || !!SR
+}
+
 export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
   const [listening, setListening] = useState(false)
   const [supported, setSupported] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+
+  useEffect(() => {
+    setSupported(detectSpeechSupport())
+  }, [])
 
   const recRef = useRef<SpeechRecognition | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)
@@ -53,10 +65,8 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
 
     if (canRecord) {
       modeRef.current = 'groq'
-      setSupported(true)
     } else if (SR) {
       modeRef.current = 'browser'
-      setSupported(true)
       const rec = new SR()
       rec.continuous = false
       rec.interimResults = true

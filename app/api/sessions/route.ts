@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server'
-import {
-  getDeviceId,
-  setActiveSessionId,
-  getActiveSessionId,
-} from '@/lib/server/session-cookies'
+import { getDeviceId, setActiveSessionId } from '@/lib/server/session-cookies'
 import {
   listSessions,
   saveSession,

@@ -118,7 +118,9 @@ New visitor — first time chatting. Be welcoming, explain how things work brief
   }
 
   lines.push('')
-  lines.push(`Use this naturally — don't read it back like a checklist. Let it guide your suggestions organically. If they bought cakes before, maybe suggest flowers this time. If they always send to ${profile.preferredCity || 'the same city'}, don't ask for the city again — confirm it casually.`)
+  lines.push(
+    `Use this quietly to personalize suggestions — never read profile data back like a database dump.`
+  )
 
   return lines.join('\n')
 }

@@ -14,15 +14,22 @@ const ThemeContext = createContext<{
   setTheme: () => {},
 })
 
+function readStoredTheme(): Theme {
+  if (typeof window === 'undefined') return 'light'
+  const stored = localStorage.getItem('anu-theme')
+  if (!stored) {
+    localStorage.setItem('anu-theme', 'light')
+    return 'light'
+  }
+  return stored === 'dark' ? 'dark' : 'light'
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light')
+  const [theme, setThemeState] = useState<Theme>(readStoredTheme)
 
   useEffect(() => {
-    const stored = localStorage.getItem('anu-theme') as Theme | null
-    const initial: Theme = stored === 'dark' ? 'dark' : 'light'
-    setThemeState(initial)
-    document.documentElement.dataset.theme = initial
-  }, [])
+    document.documentElement.dataset.theme = theme
+  }, [theme])
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t)

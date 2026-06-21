@@ -44,7 +44,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('anu-theme');if(t==='dark')document.documentElement.dataset.theme='dark';else document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('anu-theme');if(!t){localStorage.setItem('anu-theme','light');t='light';}if(t==='dark')document.documentElement.dataset.theme='dark';else document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}})();`,
           }}
         />
       </head>

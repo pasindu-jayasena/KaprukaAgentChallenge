@@ -12,6 +12,7 @@ import { FlowThinking } from '@/components/chat/FlowThinking'
 import { ProductTrioCard } from '@/components/chat/ProductTrioCard'
 import { PlanBoardCard } from '@/components/chat/PlanBoardCard'
 import { LockedCheckoutCard } from '@/components/chat/LockedCheckoutCard'
+import { OrderConfirmCard } from '@/components/cart/OrderConfirmCard'
 import { OrderTrackingCard } from '@/components/chat/OrderTrackingCard'
 import { WelcomeGuide } from '@/components/chat/WelcomeGuide'
 import { useLanguage } from '@/providers/LanguageProvider'
@@ -39,7 +40,7 @@ import type {
   CartItem,
   CheckoutDetailsInput,
 } from '@/types'
-import { buildCheckoutDetailsMessage } from '@/lib/checkout-profile'
+import { formatCheckoutUserDisplay, enrichMessageForModel } from '@/lib/conversation-context'
 import { useRecipientStore } from '@/store/recipientStore'
 
 function getGreeting(uiLang: string): string {
@@ -67,6 +68,7 @@ function AnuChatInner() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [confirmingOrder, setConfirmingOrder] = useState(false)
   const [statusLines, setStatusLines] = useState<StatusEvent[]>([])
   const [journeyStep, setJourneyStep] = useState(0)
   const [suggestedChips, setSuggestedChips] = useState<string[]>([])
@@ -227,7 +229,10 @@ function AnuChatInner() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: history.map((m) => ({ role: m.role, content: m.content })),
+            messages: history.map((m) => ({
+              role: m.role,
+              content: enrichMessageForModel(m),
+            })),
             uiLang,
             chatLang: detected,
             cartItems: cartItems.map((i) => ({
@@ -282,9 +287,17 @@ function AnuChatInner() {
               if (evt.type === 'final' && evt.payload) {
                 payload = evt.payload
                 if (payload.type === 'chat') displayText = payload.text
-                else if (payload.type === 'product_trio')
+                else if (payload.type === 'product_trio') {
+                  const trioPayload = payload as { trio?: ProductTrio; rawText?: string }
                   displayText =
-                    (payload as { trio?: ProductTrio }).trio?.context ?? 'Here are my top picks:'
+                    trioPayload.rawText?.trim() ||
+                    trioPayload.trio?.context?.trim() ||
+                    'Here are my top picks:'
+                }
+                else if (payload.type === 'order_preview')
+                  displayText =
+                    payload.text ??
+                    'Please review your order below — tap Confirm when ready to get your payment link.'
                 else displayText = 'Got it!'
                 if ('orderResult' in evt.payload && evt.payload.orderResult) {
                   payload = {
@@ -312,7 +325,7 @@ function AnuChatInner() {
         }
 
         if (payload?.type === 'product_trio') nextJourney = 1
-        if (payload?.type === 'plan_board') nextJourney = 2
+        if (payload?.type === 'plan_board' || payload?.type === 'order_preview') nextJourney = 2
         if (payload?.type === 'checkout') nextJourney = 3
         if (payload?.type === 'order_tracking') nextJourney = 4
         setJourneyStep(nextJourney)
@@ -379,10 +392,6 @@ function AnuChatInner() {
     ]
   )
 
-  const handlePlanBoardCheckout = (data: CheckoutDetailsInput) => {
-    sendMessage(buildCheckoutDetailsMessage(data, cartItems))
-  }
-
   const handleCheckoutSuccess = useCallback(
     (ctx: CheckoutSuccessPayload) => {
       const snapshot = ctx.cartRestore.map((i) => ({ ...i }))
@@ -400,6 +409,7 @@ function AnuChatInner() {
           cartRestore: ctx.cartRestore,
           recipient: ctx.recipient,
           subtotal: ctx.subtotal,
+          deliveryFee: ctx.deliveryFee,
           total: ctx.total,
           giftMessage: ctx.giftMessage,
           senderName: ctx.senderName,
@@ -408,7 +418,17 @@ function AnuChatInner() {
         },
       }
       setChatMessages((prev) => {
-        const next = [...prev, checkoutMsg]
+        const marked = prev.map((m) => {
+          if (m.payload?.type !== 'plan_board') return m
+          return {
+            ...m,
+            payload: {
+              ...m.payload,
+              plan: { ...m.payload.plan, confirmed: true },
+            },
+          }
+        })
+        const next = [...marked, checkoutMsg]
         void persistSession({
           messages: next,
           journeyStep: 3,
@@ -420,6 +440,140 @@ function AnuChatInner() {
       setSuggestedChips(getAfterCheckoutChips(uiLang))
     },
     [uiLang, persistSession, clearCheckedOutCart]
+  )
+
+  const handlePlanBoardConfirm = useCallback(
+    async (data: CheckoutDetailsInput) => {
+      if (cartItems.length === 0 || confirmingOrder) return
+      setConfirmingOrder(true)
+      try {
+        const res = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cart: cartItems,
+            recipient: data.recipient,
+            senderName: data.senderName,
+            senderEmail: data.senderEmail,
+            giftMessage: data.giftMessage,
+            specialInstructions: data.specialInstructions,
+          }),
+        })
+        const checkout = await res.json()
+        if (checkout.orderResult) {
+          const snapshot = cartItems.map((i) => ({ ...i }))
+          handleCheckoutSuccess({
+            orderResult: checkout.orderResult as OrderResult,
+            items: snapshot.map((i) => ({
+              id: i.id,
+              name: i.name,
+              price: i.price,
+              quantity: i.quantity,
+              image: i.image,
+              url: i.url,
+            })),
+            cartRestore: snapshot,
+            recipient: checkout.recipient,
+            subtotal:
+              checkout.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+            deliveryFee: checkout.deliveryFee,
+            total: checkout.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+            giftMessage: checkout.giftMessage,
+            senderName: checkout.senderName,
+            senderEmail: checkout.senderEmail,
+            specialInstructions: checkout.specialInstructions,
+          })
+        } else {
+          const errMsg: ChatMessage = {
+            role: 'assistant',
+            content:
+              checkout.error ??
+              'Checkout failed. Please double-check your details and try again.',
+          }
+          setChatMessages((prev) => {
+            const next = [...prev, errMsg]
+            void persistSession({ messages: next })
+            return next
+          })
+        }
+      } catch {
+        const errMsg: ChatMessage = {
+          role: 'assistant',
+          content: 'A network error occurred. Please try again.',
+        }
+        setChatMessages((prev) => [...prev, errMsg])
+      } finally {
+        setConfirmingOrder(false)
+      }
+    },
+    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession]
+  )
+
+  const handleOrderPreviewConfirm = useCallback(
+    async (details: CheckoutDetailsInput) => {
+      if (cartItems.length === 0 || confirmingOrder) return
+      setConfirmingOrder(true)
+      try {
+        const res = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cart: cartItems,
+            recipient: details.recipient,
+            senderName: details.senderName,
+            senderEmail: details.senderEmail,
+            giftMessage: details.giftMessage,
+            specialInstructions: details.specialInstructions,
+          }),
+        })
+        const data = await res.json()
+        if (data.orderResult) {
+          const snapshot = cartItems.map((i) => ({ ...i }))
+          handleCheckoutSuccess({
+            orderResult: data.orderResult as OrderResult,
+            items: snapshot.map((i) => ({
+              id: i.id,
+              name: i.name,
+              price: i.price,
+              quantity: i.quantity,
+              image: i.image,
+              url: i.url,
+            })),
+            cartRestore: snapshot,
+            recipient: data.recipient,
+            subtotal:
+              data.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+            deliveryFee: data.deliveryFee,
+            total: data.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+            giftMessage: data.giftMessage,
+            senderName: data.senderName,
+            senderEmail: data.senderEmail,
+            specialInstructions: data.specialInstructions,
+          })
+        } else {
+          const errMsg: ChatMessage = {
+            role: 'assistant',
+            content:
+              data.error ??
+              'Checkout failed. Please double-check your details and try again.',
+          }
+          setChatMessages((prev) => {
+            const next = [...prev, errMsg]
+            void persistSession({ messages: next })
+            return next
+          })
+        }
+      } catch {
+        const errMsg: ChatMessage = {
+          role: 'assistant',
+          content: 'A network error occurred. Please try again.',
+        }
+        setChatMessages((prev) => [...prev, errMsg])
+      } finally {
+        setConfirmingOrder(false)
+      }
+    },
+    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession]
   )
 
   const handleAddToCart = useCallback(
@@ -496,23 +650,35 @@ function AnuChatInner() {
               )
             }
 
+            const hasProductTrio = msg.payload?.type === 'product_trio'
+
             return (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, ease: [0.2, 0.7, 0.2, 1] }}
-                className={msg.role === 'user' ? 'flex justify-end pl-8 sm:pl-12' : 'flex justify-start pr-4 sm:pr-8'}
+                className={
+                  msg.role === 'user'
+                    ? 'flex justify-end pl-8 sm:pl-12'
+                    : `flex w-full justify-start ${hasProductTrio ? '' : 'pr-4 sm:pr-8'}`
+                }
               >
                 {msg.role === 'user' ? (
                   <div className="bubble-user max-w-[min(85%,26rem)]">
-                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                    <p className="whitespace-pre-wrap break-words">
+                      {formatCheckoutUserDisplay(msg.content)}
+                    </p>
                     <div className="mt-1 flex justify-end">
                       <SentReceipt />
                     </div>
                   </div>
                 ) : (
-                  <div className="flex w-full max-w-[min(100%,34rem)] items-start gap-2.5">
+                  <div
+                    className={`flex w-full items-start gap-2.5 ${
+                      hasProductTrio ? 'min-w-0' : 'max-w-[min(100%,34rem)]'
+                    }`}
+                  >
                     <div className="mt-0.5 shrink-0">
                       <AnuLogoMark size="sm" />
                     </div>
@@ -530,14 +696,39 @@ function AnuChatInner() {
                       )}
                       {msg.payload?.type === 'product_trio' && (
                         <ProductTrioCard
-                          trio={msg.payload.trio as ProductTrio}
+                          trio={{
+                            ...(msg.payload.trio as ProductTrio),
+                            context:
+                              msg.content &&
+                              msg.payload.trio?.context &&
+                              msg.content.trim() === msg.payload.trio.context.trim()
+                                ? undefined
+                                : msg.payload.trio?.context,
+                          }}
                           onAddToCart={handleAddToCart}
                         />
                       )}
                       {msg.payload?.type === 'plan_board' && (
                         <PlanBoardCard
                           plan={msg.payload.plan as PlanBoard}
-                          onCheckoutSubmit={handlePlanBoardCheckout}
+                          processing={confirmingOrder}
+                          onConfirm={handlePlanBoardConfirm}
+                        />
+                      )}
+                      {msg.payload?.type === 'order_preview' && !msg.payload.confirmed && (
+                        <OrderConfirmCard
+                          items={msg.payload.items}
+                          details={msg.payload.details}
+                          subtotal={msg.payload.subtotal}
+                          deliveryFee={msg.payload.deliveryFee}
+                          total={msg.payload.total}
+                          deliveryNote={msg.payload.deliveryNote}
+                          processing={confirmingOrder}
+                          onConfirm={() => {
+                            if (msg.payload?.type === 'order_preview') {
+                              void handleOrderPreviewConfirm(msg.payload.details)
+                            }
+                          }}
                         />
                       )}
                       {msg.payload?.type === 'order_tracking' && (

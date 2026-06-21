@@ -4,6 +4,7 @@ import ta from './ta'
 import type { UiLang } from '@/types'
 import type { Messages } from './en'
 export type { Messages } from './en'
+export { formatMessage, formatCurrency, formatLocaleDate } from './format'
 
 const catalogs = { en, si, ta } as const
 

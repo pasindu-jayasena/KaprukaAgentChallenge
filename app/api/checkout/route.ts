@@ -1,0 +1,128 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { createKaprukaOrder } from '@/lib/checkout'
+import { rateLimited } from '@/lib/server/rate-limit'
+
+const schema = z.object({
+  cart: z.array(
+    z.object({
+      id: z.string().catch('unknown'),
+      name: z.string().catch('Unknown Item'),
+      price: z.coerce.number().catch(0),
+      quantity: z.coerce.number().catch(1),
+      icingText: z.string().nullish(),
+    })
+  ),
+  recipient: z.object({
+    name: z.string().min(1, 'Recipient name is required'),
+    phone: z.string().min(7, 'Phone number is required'),
+    address: z.string().min(3, 'Address is required'),
+    city: z.string().min(2, 'City is required'),
+    date: z.string().min(8, 'Delivery date is required'),
+  }),
+  senderName: z.string().min(1, 'Sender name is required'),
+  giftMessage: z.string().nullish(),
+})
+
+// Map known Kapruka API errors to user-friendly messages
+function friendlyError(errorMsg: string): string {
+  if (errorMsg.includes('city_not_deliverable')) {
+    const city = errorMsg.match(/City.*?:\s*(.*)/)?.[1]?.trim()
+    return city
+      ? `Sorry, we can't deliver to "${city}" yet. Try a nearby city like Colombo, Kandy, or Galle.`
+      : "Sorry, that city isn't in our delivery network yet. Try a nearby major city."
+  }
+  if (errorMsg.includes('product_unavailable') || errorMsg.includes('out_of_stock')) {
+    return 'One of the items in your cart is currently out of stock. Please remove it and try again.'
+  }
+  if (errorMsg.includes('rate_limit') || errorMsg.includes('RATE_LIMIT')) {
+    return "We're handling a lot of orders right now. Please try again in about 30 seconds."
+  }
+  if (errorMsg.includes('invalid_date')) {
+    return "That delivery date doesn't work. Please pick a date at least 1 day from now."
+  }
+  // Fallback: strip the technical prefix
+  return errorMsg.replace(/^Order failed:\s*/i, '').trim() || 'Checkout failed. Please try again.'
+}
+
+// Basic HTML sanitization for string inputs
+function sanitize(str: string): string {
+  return str
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .trim()
+}
+
+export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (rateLimited(ip)) {
+    return NextResponse.json(
+      { error: "We're handling a lot of orders right now. Please try again in about 30 seconds." },
+      { status: 429 }
+    )
+  }
+
+  try {
+    const raw = await req.json()
+    const parsed = schema.safeParse(raw)
+    if (!parsed.success) {
+      const firstError = parsed.error.issues[0]
+      console.error('Checkout validation error:', parsed.error)
+      return NextResponse.json(
+        { error: firstError?.message || 'Invalid checkout details. Please fill in all fields.' },
+        { status: 400 }
+      )
+    }
+
+    const body = parsed.data
+
+    // Sanitize string inputs
+    const sanitizedRecipient = {
+      name: sanitize(body.recipient.name),
+      phone: sanitize(body.recipient.phone),
+      address: sanitize(body.recipient.address),
+      city: sanitize(body.recipient.city),
+      date: body.recipient.date,
+    }
+
+    const orderResult = await createKaprukaOrder({
+      cart: body.cart.map((i) => ({
+        id: i.id,
+        name: sanitize(i.name),
+        price: i.price,
+        image: null,
+        url: null,
+        quantity: i.quantity,
+        icingText: i.icingText ? sanitize(i.icingText) : undefined,
+      })),
+      recipient: sanitizedRecipient,
+      senderName: sanitize(body.senderName),
+      giftMessage: body.giftMessage ? sanitize(body.giftMessage) : undefined,
+    })
+
+    // Return full order context for the receipt card
+    const subtotal = body.cart.reduce((s, i) => s + i.price * i.quantity, 0)
+    return NextResponse.json({
+      orderResult,
+      items: body.cart.map((i) => ({
+        name: i.name,
+        price: i.price,
+        quantity: i.quantity,
+      })),
+      recipient: sanitizedRecipient,
+      subtotal,
+      total: subtotal, // Delivery fee comes from the MCP response
+      senderName: body.senderName,
+      giftMessage: body.giftMessage,
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Checkout failed'
+    console.error('Checkout error:', msg)
+    return NextResponse.json(
+      { error: friendlyError(msg) },
+      { status: 400 }
+    )
+  }
+}

@@ -28,12 +28,12 @@ export function AppShell({
 }: Props) {
   const [cartOpen, setCartOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   useEffect(() => {
     if (!collapsibleSidebar) return
     const stored = localStorage.getItem('anu-sessions-collapsed')
-    if (stored === 'true') setSidebarCollapsed(true)
+    if (stored === 'false') setSidebarCollapsed(false)
   }, [collapsibleSidebar])
 
   const toggleCollapse = () => {

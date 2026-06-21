@@ -123,7 +123,7 @@ const en = {
   home: {
     whyTitle: 'Why shop with Anu?',
     whyItems: [
-      { title: 'Understands you', desc: 'Natural language in English, Sinhala, or Tamil' },
+      { title: 'Understands you', desc: 'Natural language in English, Sinhala, Tamil, Tanglish, or Singlish' },
       { title: 'Finds the best', desc: 'Curated picks from Kapruka\'s full catalog' },
       { title: 'Handles everything', desc: 'Search, delivery check, and checkout in one flow' },
       { title: 'Always here', desc: 'Pick up where you left off anytime' },

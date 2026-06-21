@@ -27,7 +27,7 @@ const notoTamil = Noto_Sans_Tamil({
 })
 
 export const metadata: Metadata = {
-  title: 'Kapruka — Anu Gift Concierge',
+  title: 'Kapruka Anu',
   description: 'Shop Kapruka with Anu, your personal shopping assistant',
 }
 

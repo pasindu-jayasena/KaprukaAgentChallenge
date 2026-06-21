@@ -1,0 +1,325 @@
+'use client'
+
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Minus, Plus, Trash2, ShoppingBag, CheckSquare, Square, MessageSquare, Gift } from 'lucide-react'
+import { useCartStore } from '@/store/cartStore'
+import { useLanguage } from '@/providers/LanguageProvider'
+import { RecipientForm } from '@/components/cart/RecipientForm'
+import { LockedCheckoutCard } from '@/components/chat/LockedCheckoutCard'
+import type { OrderResult, Recipient } from '@/types'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  onCheckoutViaChat?: (msg: string) => void
+}
+
+export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
+  const { messages } = useLanguage()
+  const {
+    items,
+    updateQuantity,
+    removeItem,
+    selectedIds,
+    toggleSelection,
+    selectAll,
+    clearSelection,
+    selectedItems,
+    selectedTotal,
+  } = useCartStore()
+
+  const [tab, setTab] = useState<'items' | 'delivery'>('items')
+  const [processing, setProcessing] = useState(false)
+  const [orderResult, setOrderResult] = useState<OrderResult | null>(null)
+  
+  // Checkout Context returned from API
+  const [checkoutCtx, setCheckoutCtx] = useState<any>(null)
+
+  const [senderName, setSenderName] = useState('')
+  const [giftMessage, setGiftMessage] = useState('')
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  const checkoutItems = selectedItems()
+  const allSelected = items.length > 0 && selectedIds.length === items.length
+
+  const handleToggleAll = () => {
+    if (allSelected) clearSelection()
+    else selectAll()
+  }
+
+  const handleDeliverySubmit = async (recipient: Recipient) => {
+    if (!senderName.trim() || checkoutItems.length === 0) return
+    setProcessing(true)
+    setCheckoutError(null)
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cart: checkoutItems,
+          recipient,
+          senderName,
+          giftMessage: giftMessage || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.orderResult) {
+        setOrderResult(data.orderResult)
+        setCheckoutCtx(data)
+        // Clear checked items from cart on success
+        checkoutItems.forEach(i => removeItem(i.id))
+      } else if (data.error) {
+        setCheckoutError(data.error)
+      } else {
+        setCheckoutError('Checkout failed. Please try again.')
+      }
+    } catch {
+      setCheckoutError('A network error occurred. Please try again.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleViaAnu = (recipient: Recipient) => {
+    // Pass the full cart context if we can. Actually Anu already knows the cart from `app/api/chat/route.ts` which uses `useCartStore.getState().items`. But wait! Anu's context receives *all* cart items. For selective checkout via chat, we need to tell Anu *which* items.
+    // For now, if they use "Complete with Anu", we tell Anu they are checking out.
+    const selectedNames = checkoutItems.map(i => `${i.name} x${i.quantity}`).join(', ')
+    const msg = `CHECKOUT_DETAILS: Selected Items: [${selectedNames}]; Recipient: Name=${recipient.name}; Phone=${recipient.phone}; Address=${recipient.address}; City=${recipient.city}; Date=${recipient.date}; Sender=${senderName}`
+    onCheckoutViaChat?.(msg)
+    onClose()
+  }
+
+  // Reset state when closing or opening
+  const handleClose = () => {
+    if (orderResult) {
+      setOrderResult(null)
+      setCheckoutCtx(null)
+      setTab('items')
+    }
+    onClose()
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.button
+            type="button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            aria-label="Close cart"
+            className="fixed inset-0 z-[45] bg-black/40 backdrop-blur-sm"
+            onClick={handleClose}
+          />
+          <motion.aside
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed right-0 z-[46] flex h-full w-[min(100vw,24rem)] flex-col bg-[var(--bg-surface)] shadow-2xl overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between bg-[#401F60] px-5 py-4 text-white">
+              <div className="flex items-center gap-3">
+                <ShoppingBag className="h-5 w-5 text-[#FCE22A]" />
+                <h2 className="font-display text-lg font-bold tracking-wide">
+                  {messages.nav.cart}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Tabs (Hide if order completed) */}
+            {!orderResult && (
+              <div className="flex border-b border-[var(--border-light)] px-5 bg-[var(--bg-surface)] shrink-0">
+                {(['items', 'delivery'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      if (t === 'delivery' && checkoutItems.length === 0) return
+                      setTab(t)
+                    }}
+                    className={`flex-1 py-3.5 text-sm font-bold transition-colors ${
+                      tab === t
+                        ? 'border-b-2 border-[#401F60] text-[#401F60] dark:text-white dark:border-white'
+                        : 'text-[var(--text-muted)] hover:text-[#401F60] dark:hover:text-white/80'
+                    } ${t === 'delivery' && checkoutItems.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {t === 'items' ? messages.cart.items : messages.cart.delivery}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-page)]">
+              {orderResult ? (
+                <div className="p-5 flex justify-center">
+                  <LockedCheckoutCard
+                    orderResult={orderResult}
+                    items={checkoutCtx?.items}
+                    recipient={checkoutCtx?.recipient}
+                    subtotal={checkoutCtx?.subtotal}
+                    total={checkoutCtx?.total}
+                    giftMessage={checkoutCtx?.giftMessage}
+                  />
+                </div>
+              ) : tab === 'items' ? (
+                items.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#401F60]/5 dark:bg-white/5">
+                      <ShoppingBag className="h-10 w-10 text-[#401F60]/40 dark:text-white/40" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-[var(--text-primary)] mb-1">Your cart is empty</p>
+                      <p className="text-sm text-[var(--text-muted)]">Ask Anu to find something great for you!</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 space-y-4">
+                    {/* Select All Toggle */}
+                    <div className="flex items-center gap-3 pb-2 border-b border-[var(--border-light)] px-1">
+                      <button type="button" onClick={handleToggleAll} className="text-[#401F60] dark:text-white">
+                        {allSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5 opacity-50" />}
+                      </button>
+                      <span className="text-sm font-semibold text-[var(--text-secondary)]">
+                        {allSelected ? 'Deselect All' : 'Select All'}
+                      </span>
+                    </div>
+
+                    <ul className="space-y-3">
+                      {items.map((item) => {
+                        const isSelected = selectedIds.includes(item.id)
+                        return (
+                          <li key={item.id} className={`flex gap-3 rounded-xl border bg-[var(--bg-surface)] p-3 transition-colors ${isSelected ? 'border-[#401F60] shadow-sm dark:border-white/30' : 'border-[var(--border-light)] opacity-75'}`}>
+                            <button type="button" onClick={() => toggleSelection(item.id)} className="mt-1 shrink-0 text-[#401F60] dark:text-white">
+                              {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5 opacity-40" />}
+                            </button>
+                            
+                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-kapruka-header/5 text-2xl overflow-hidden relative">
+                              {/* Future image support can go here. For now, emoji fallback */}
+                              🎁
+                            </div>
+
+                            <div className="min-w-0 flex-1 flex flex-col justify-between">
+                              <div>
+                                <p className="truncate text-sm font-bold text-[var(--text-primary)]">{item.name}</p>
+                                <p className="text-sm font-semibold text-kapruka-header mt-0.5">
+                                  Rs. {item.price.toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between">
+                                <div className="flex items-center gap-2 bg-[var(--bg-page)] rounded-md border border-[var(--border-light)] p-0.5">
+                                  <button type="button" onClick={() => updateQuantity(item.id, item.quantity - 1)} className="flex h-6 w-6 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 transition">
+                                    <Minus className="h-3 w-3" />
+                                  </button>
+                                  <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
+                                  <button type="button" onClick={() => updateQuantity(item.id, item.quantity + 1)} className="flex h-6 w-6 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 transition">
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>
+                                <button type="button" onClick={() => removeItem(item.id)} className="text-[var(--text-muted)] hover:text-red-500 transition-colors p-1">
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )
+              ) : (
+                <div className="p-5">
+                  {/* Mini Summary */}
+                  <div className="mb-6 p-3 rounded-lg bg-[#401F60]/5 dark:bg-white/5 border border-[#401F60]/10 dark:border-white/10">
+                    <p className="text-xs font-bold text-[#401F60] dark:text-white/80 uppercase tracking-wider mb-2">Order Summary ({checkoutItems.length} items)</p>
+                    <ul className="text-sm space-y-1 text-[var(--text-secondary)]">
+                      {checkoutItems.map(i => (
+                        <li key={i.id} className="flex justify-between truncate">
+                          <span className="truncate pr-2">{i.quantity}x {i.name}</span>
+                          <span className="shrink-0 font-medium">Rs. {(i.price * i.quantity).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-2 pt-2 border-t border-[#401F60]/10 dark:border-white/10 flex justify-between font-bold text-[#401F60] dark:text-white">
+                      <span>Subtotal</span>
+                      <span>Rs. {selectedTotal().toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="mb-1.5 block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">
+                      Sender Name
+                    </label>
+                    <input
+                      required
+                      value={senderName}
+                      onChange={(e) => setSenderName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm outline-none focus:border-kapruka-header transition-colors shadow-sm"
+                    />
+                  </div>
+                  <div className="mb-5">
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">
+                      <Gift className="h-3.5 w-3.5" /> Optional Gift Message
+                    </label>
+                    <textarea
+                      placeholder="Write something nice..."
+                      value={giftMessage}
+                      onChange={(e) => setGiftMessage(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm outline-none focus:border-kapruka-header transition-colors shadow-sm resize-none"
+                    />
+                  </div>
+
+                  <RecipientForm
+                    variant="cart"
+                    processing={processing}
+                    onSubmit={handleDeliverySubmit}
+                    // We only show the Anu button if onCheckoutViaChat is provided
+                  />
+
+                  {checkoutError && (
+                    <div className="mt-4 rounded-xl border border-red-500/20 bg-red-50 p-4 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400 font-medium">
+                      {checkoutError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Sticky Footer */}
+            {tab === 'items' && items.length > 0 && !orderResult && (
+              <div className="border-t border-[var(--border-light)] bg-[var(--bg-surface)] p-5 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
+                <div className="mb-4 flex justify-between text-sm items-end">
+                  <span className="font-bold text-[var(--text-secondary)]">Subtotal ({checkoutItems.length} items)</span>
+                  <span className="text-xl font-black text-kapruka-header">Rs. {selectedTotal().toLocaleString()}</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={checkoutItems.length === 0}
+                  onClick={() => setTab('delivery')}
+                  className="w-full rounded-full bg-[#FCE22A] py-3.5 text-sm font-bold text-[#401F60] transition-all hover:bg-[#FDEB6B] active:scale-[0.98] shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Checkout Selected
+                </button>
+              </div>
+            )}
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}

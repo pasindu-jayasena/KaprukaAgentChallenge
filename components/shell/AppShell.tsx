@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect, isValidElement, cloneElement } from 'react'
-import { PanelLeftOpen, X } from 'lucide-react'
 import { AppHeader } from '@/components/shell/AppHeader'
-import { SubNav } from '@/components/shell/SubNav'
 import { AmbientScene } from '@/components/chat/AmbientScene'
 import { CartDrawer } from '@/components/cart/CartDrawer'
 
@@ -12,7 +10,11 @@ interface Props {
   sidebar?: React.ReactNode
   collapsibleSidebar?: boolean
   onCheckoutViaChat?: (msg: string) => void
-  variant?: 'home' | 'chat'
+  onCheckoutSuccess?: (payload: import('@/types').CheckoutSuccessPayload) => void
+  /** Chat page ambient background */
+  ambient?: boolean
+  /** Scrollable main column (homepage) */
+  scrollMain?: boolean
 }
 
 export function AppShell({
@@ -20,7 +22,9 @@ export function AppShell({
   sidebar,
   collapsibleSidebar = false,
   onCheckoutViaChat,
-  variant = 'home',
+  onCheckoutSuccess,
+  ambient = false,
+  scrollMain = false,
 }: Props) {
   const [cartOpen, setCartOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -41,7 +45,7 @@ export function AppShell({
   }
 
   const hasSidebar = !!sidebar
-  const isChatRail = hasSidebar && collapsibleSidebar
+  const isSidebarLayout = hasSidebar && collapsibleSidebar
   const sidebarNode =
     hasSidebar && isValidElement(sidebar) && collapsibleSidebar
       ? cloneElement(sidebar, {
@@ -52,6 +56,14 @@ export function AppShell({
           onSessionOpen: () => setMobileSidebarOpen(false),
         } as Record<string, unknown>)
       : sidebar
+
+  const openSidebar = () => {
+    if (window.innerWidth >= 1024) {
+      if (sidebarCollapsed) toggleCollapse()
+    } else {
+      setMobileSidebarOpen(true)
+    }
+  }
 
   const mobileDrawer =
     hasSidebar && mobileSidebarOpen ? (
@@ -68,40 +80,39 @@ export function AppShell({
       </>
     ) : null
 
-  /* ── CHAT LAYOUT ── */
-  if (isChatRail) {
+  const header = (
+    <AppHeader
+      layout="chat"
+      cartOpen={cartOpen}
+      onCartOpen={() => setCartOpen((o) => !o)}
+      onMenuToggle={isSidebarLayout ? openSidebar : undefined}
+      showMenuIcon={isSidebarLayout ? sidebarCollapsed : false}
+    />
+  )
+
+  if (isSidebarLayout) {
     return (
       <div className="anu-shell anu-shell--chat relative flex h-full min-h-0 flex-1 flex-row overflow-hidden">
-        <AmbientScene />
+        {ambient && <AmbientScene />}
 
-        {/* Desktop sidebar */}
         {!sidebarCollapsed && (
           <aside className="sessions-rail-panel shell-sidebar-full z-10 hidden h-full min-h-0 w-[260px] shrink-0 flex-col xl:w-[280px] lg:flex">
             {sidebarNode}
           </aside>
         )}
 
-        {/* Collapsed state is now handled by the menu icon in the AppHeader */}
-
-        {/* Main chat area */}
         <div className="shell-right relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <AppHeader
-            layout="chat"
-            cartOpen={cartOpen}
-            onCartOpen={() => setCartOpen((o) => !o)}
-            onMenuToggle={() => {
-              if (window.innerWidth >= 1024) {
-                if (sidebarCollapsed) toggleCollapse()
-              } else {
-                setMobileSidebarOpen(true)
-              }
-            }}
-            showMenuIcon={sidebarCollapsed}
-          />
+          {header}
 
-          <div className="shell-main flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            className={`shell-main flex min-h-0 flex-1 flex-col overflow-hidden ${scrollMain ? 'shell-main--home' : ''}`}
+          >
             <div className="flex min-h-0 flex-1 overflow-hidden">
-              <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 pb-2 sm:px-3 sm:pb-3">
+              <main
+                className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+                  ambient ? 'px-2 pb-2 sm:px-3 sm:pb-3' : ''
+                }`}
+              >
                 {children}
               </main>
             </div>
@@ -114,28 +125,27 @@ export function AppShell({
           open={cartOpen}
           onClose={() => setCartOpen(false)}
           onCheckoutViaChat={onCheckoutViaChat}
+          onCheckoutSuccess={onCheckoutSuccess}
         />
       </div>
     )
   }
 
-  /* ── HOME LAYOUT ── */
   return (
     <div className="anu-shell relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <AppHeader cartOpen={cartOpen} onCartOpen={() => setCartOpen((o) => !o)} />
+      <div className="shell-right relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {header}
 
-      <div className="shell-main shell-main--home relative z-10 flex min-h-0 flex-1 flex-col">
-        <main className="min-h-0 flex-1">
-          {children}
-        </main>
+        <div className="shell-main shell-main--home flex min-h-0 flex-1 flex-col overflow-hidden">
+          <main className="min-h-0 flex-1">{children}</main>
+        </div>
       </div>
-
-      {mobileDrawer}
 
       <CartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
         onCheckoutViaChat={onCheckoutViaChat}
+        onCheckoutSuccess={onCheckoutSuccess}
       />
     </div>
   )

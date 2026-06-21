@@ -21,7 +21,9 @@ const schema = z.object({
     date: z.string().min(8, 'Delivery date is required'),
   }),
   senderName: z.string().min(1, 'Sender name is required'),
+  senderEmail: z.string().email('Valid sender email is required').catch('guest@kapruka.com'),
   giftMessage: z.string().nullish(),
+  specialInstructions: z.string().nullish(),
 })
 
 // Map known Kapruka API errors to user-friendly messages
@@ -99,7 +101,11 @@ export async function POST(req: Request) {
       })),
       recipient: sanitizedRecipient,
       senderName: sanitize(body.senderName),
+      senderEmail: sanitize(body.senderEmail),
       giftMessage: body.giftMessage ? sanitize(body.giftMessage) : undefined,
+      specialInstructions: body.specialInstructions
+        ? sanitize(body.specialInstructions)
+        : undefined,
     })
 
     // Return full order context for the receipt card
@@ -115,7 +121,9 @@ export async function POST(req: Request) {
       subtotal,
       total: subtotal, // Delivery fee comes from the MCP response
       senderName: body.senderName,
+      senderEmail: body.senderEmail,
       giftMessage: body.giftMessage,
+      specialInstructions: body.specialInstructions,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Checkout failed'

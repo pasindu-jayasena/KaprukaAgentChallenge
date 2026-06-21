@@ -10,7 +10,7 @@ interface Props {
 export function OrderTrackingCard({ tracking }: Props) {
   return (
     <div className="rounded-xl border border-kapruka-header/20 bg-[var(--bg-surface)] p-4">
-      <p className="font-semibold text-kapruka-header">{tracking.ref}</p>
+      <p className="font-semibold text-kapruka-header dark:text-[var(--text-primary)]">{tracking.ref}</p>
       <p className="text-sm text-[var(--text-secondary)]">{tracking.status}</p>
       {tracking.eta && (
         <p className="mt-1 text-xs text-[var(--text-muted)]">ETA: {tracking.eta}</p>

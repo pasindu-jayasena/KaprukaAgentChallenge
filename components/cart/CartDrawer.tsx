@@ -2,20 +2,21 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minus, Plus, Trash2, ShoppingBag, CheckSquare, Square, MessageSquare, Gift } from 'lucide-react'
+import { X, Minus, Plus, Trash2, ShoppingBag, CheckSquare, Square } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { useLanguage } from '@/providers/LanguageProvider'
-import { RecipientForm } from '@/components/cart/RecipientForm'
-import { LockedCheckoutCard } from '@/components/chat/LockedCheckoutCard'
-import type { OrderResult, Recipient } from '@/types'
+import { CheckoutDetailsFields } from '@/components/cart/CheckoutDetailsFields'
+import { buildCheckoutDetailsMessage } from '@/lib/checkout-profile'
+import type { CheckoutSuccessPayload, CheckoutDetailsInput, OrderResult } from '@/types'
 
 interface Props {
   open: boolean
   onClose: () => void
   onCheckoutViaChat?: (msg: string) => void
+  onCheckoutSuccess?: (payload: CheckoutSuccessPayload) => void
 }
 
-export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
+export function CartDrawer({ open, onClose, onCheckoutViaChat, onCheckoutSuccess }: Props) {
   const { messages } = useLanguage()
   const {
     items,
@@ -31,13 +32,6 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
 
   const [tab, setTab] = useState<'items' | 'delivery'>('items')
   const [processing, setProcessing] = useState(false)
-  const [orderResult, setOrderResult] = useState<OrderResult | null>(null)
-  
-  // Checkout Context returned from API
-  const [checkoutCtx, setCheckoutCtx] = useState<any>(null)
-
-  const [senderName, setSenderName] = useState('')
-  const [giftMessage, setGiftMessage] = useState('')
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   const checkoutItems = selectedItems()
@@ -48,8 +42,8 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
     else selectAll()
   }
 
-  const handleDeliverySubmit = async (recipient: Recipient) => {
-    if (!senderName.trim() || checkoutItems.length === 0) return
+  const handleDeliverySubmit = async (details: CheckoutDetailsInput) => {
+    if (checkoutItems.length === 0) return
     setProcessing(true)
     setCheckoutError(null)
     try {
@@ -58,17 +52,40 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cart: checkoutItems,
-          recipient,
-          senderName,
-          giftMessage: giftMessage || undefined,
+          recipient: details.recipient,
+          senderName: details.senderName,
+          senderEmail: details.senderEmail,
+          giftMessage: details.giftMessage,
+          specialInstructions: details.specialInstructions,
         }),
       })
       const data = await res.json()
       if (data.orderResult) {
-        setOrderResult(data.orderResult)
-        setCheckoutCtx(data)
-        // Clear checked items from cart on success
-        checkoutItems.forEach(i => removeItem(i.id))
+        const snapshot = checkoutItems.map((i) => ({ ...i }))
+        checkoutItems.forEach((i) => removeItem(i.id))
+
+        onCheckoutSuccess?.({
+          orderResult: data.orderResult as OrderResult,
+          items: snapshot.map((i) => ({
+            id: i.id,
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity,
+            image: i.image,
+            url: i.url,
+          })),
+          cartRestore: snapshot,
+          recipient: data.recipient,
+          subtotal: data.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+          total: data.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
+          giftMessage: data.giftMessage,
+          senderName: data.senderName,
+          senderEmail: data.senderEmail,
+          specialInstructions: data.specialInstructions,
+        })
+
+        setTab('items')
+        onClose()
       } else if (data.error) {
         setCheckoutError(data.error)
       } else {
@@ -81,22 +98,12 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
     }
   }
 
-  const handleViaAnu = (recipient: Recipient) => {
-    // Pass the full cart context if we can. Actually Anu already knows the cart from `app/api/chat/route.ts` which uses `useCartStore.getState().items`. But wait! Anu's context receives *all* cart items. For selective checkout via chat, we need to tell Anu *which* items.
-    // For now, if they use "Complete with Anu", we tell Anu they are checking out.
-    const selectedNames = checkoutItems.map(i => `${i.name} x${i.quantity}`).join(', ')
-    const msg = `CHECKOUT_DETAILS: Selected Items: [${selectedNames}]; Recipient: Name=${recipient.name}; Phone=${recipient.phone}; Address=${recipient.address}; City=${recipient.city}; Date=${recipient.date}; Sender=${senderName}`
-    onCheckoutViaChat?.(msg)
+  const handleViaAnu = (details: CheckoutDetailsInput) => {
+    onCheckoutViaChat?.(buildCheckoutDetailsMessage(details, checkoutItems, 'Selected Items'))
     onClose()
   }
 
-  // Reset state when closing or opening
   const handleClose = () => {
-    if (orderResult) {
-      setOrderResult(null)
-      setCheckoutCtx(null)
-      setTab('items')
-    }
     onClose()
   }
 
@@ -110,7 +117,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             aria-label="Close cart"
-            className="fixed inset-0 z-[45] bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
             onClick={handleClose}
           />
           <motion.aside
@@ -118,7 +125,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 z-[46] flex h-full w-[min(100vw,24rem)] flex-col bg-[var(--bg-surface)] shadow-2xl overflow-hidden"
+            className="fixed inset-y-0 right-0 z-[61] flex h-[100dvh] w-[min(100vw,24rem)] flex-col overflow-hidden bg-[var(--bg-surface)] shadow-2xl"
             role="dialog"
             aria-modal="true"
           >
@@ -139,9 +146,8 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
               </button>
             </div>
 
-            {/* Tabs (Hide if order completed) */}
-            {!orderResult && (
-              <div className="flex border-b border-[var(--border-light)] px-5 bg-[var(--bg-surface)] shrink-0">
+            {/* Tabs */}
+            <div className="flex shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-surface)] px-5">
                 {(['items', 'delivery'] as const).map((t) => (
                   <button
                     key={t}
@@ -159,31 +165,23 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
                     {t === 'items' ? messages.cart.items : messages.cart.delivery}
                   </button>
                 ))}
-              </div>
-            )}
+            </div>
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto bg-[var(--bg-page)]">
-              {orderResult ? (
-                <div className="p-5 flex justify-center">
-                  <LockedCheckoutCard
-                    orderResult={orderResult}
-                    items={checkoutCtx?.items}
-                    recipient={checkoutCtx?.recipient}
-                    subtotal={checkoutCtx?.subtotal}
-                    total={checkoutCtx?.total}
-                    giftMessage={checkoutCtx?.giftMessage}
-                  />
-                </div>
-              ) : tab === 'items' ? (
+              {tab === 'items' ? (
                 items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
                     <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#401F60]/5 dark:bg-white/5">
                       <ShoppingBag className="h-10 w-10 text-[#401F60]/40 dark:text-white/40" />
                     </div>
                     <div>
-                      <p className="font-bold text-[var(--text-primary)] mb-1">Your cart is empty</p>
-                      <p className="text-sm text-[var(--text-muted)]">Ask Anu to find something great for you!</p>
+                      <p className="mb-1 font-bold text-[var(--text-primary)]">
+                        {messages.cart.emptyTitle}
+                      </p>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        {messages.cart.emptyHint}
+                      </p>
                     </div>
                   </div>
                 ) : (
@@ -259,36 +257,10 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
                     </div>
                   </div>
 
-                  <div className="mb-4">
-                    <label className="mb-1.5 block text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">
-                      Sender Name
-                    </label>
-                    <input
-                      required
-                      value={senderName}
-                      onChange={(e) => setSenderName(e.target.value)}
-                      placeholder="Your name"
-                      className="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm outline-none focus:border-kapruka-header transition-colors shadow-sm"
-                    />
-                  </div>
-                  <div className="mb-5">
-                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">
-                      <Gift className="h-3.5 w-3.5" /> Optional Gift Message
-                    </label>
-                    <textarea
-                      placeholder="Write something nice..."
-                      value={giftMessage}
-                      onChange={(e) => setGiftMessage(e.target.value)}
-                      rows={2}
-                      className="w-full rounded-xl border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-sm outline-none focus:border-kapruka-header transition-colors shadow-sm resize-none"
-                    />
-                  </div>
-
-                  <RecipientForm
+                  <CheckoutDetailsFields
                     variant="cart"
                     processing={processing}
                     onSubmit={handleDeliverySubmit}
-                    // We only show the Anu button if onCheckoutViaChat is provided
                   />
 
                   {checkoutError && (
@@ -301,7 +273,7 @@ export function CartDrawer({ open, onClose, onCheckoutViaChat }: Props) {
             </div>
 
             {/* Sticky Footer */}
-            {tab === 'items' && items.length > 0 && !orderResult && (
+            {tab === 'items' && items.length > 0 && (
               <div className="border-t border-[var(--border-light)] bg-[var(--bg-surface)] p-5 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
                 <div className="mb-4 flex justify-between text-sm items-end">
                   <span className="font-bold text-[var(--text-secondary)]">Subtotal ({checkoutItems.length} items)</span>

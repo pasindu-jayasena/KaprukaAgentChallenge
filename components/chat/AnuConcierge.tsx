@@ -18,17 +18,29 @@ import { useLanguage } from '@/providers/LanguageProvider'
 import { useCartStore } from '@/store/cartStore'
 import { detectChatLanguage } from '@/lib/detect-language'
 import { ANU_GREETINGS } from '@/config/site'
+import {
+  addToCartFollowUp,
+  getAfterAddToCartChips,
+  getAfterCheckoutChips,
+  getOccasionChips,
+  inferChipsFromAssistantText,
+  mergeChips,
+} from '@/lib/recommendation-chips'
 import type {
   ChatMessage,
   ChatPayload,
-  Recipient,
+  CheckoutSuccessPayload,
   ProductTrio,
   PlanBoard,
   OrderTracking,
   OrderResult,
   StatusEvent,
   SessionRecord,
+  CartItem,
+  CheckoutDetailsInput,
 } from '@/types'
+import { buildCheckoutDetailsMessage } from '@/lib/checkout-profile'
+import { useRecipientStore } from '@/store/recipientStore'
 
 function getGreeting(uiLang: string): string {
   if (uiLang === 'si') return ANU_GREETINGS.si
@@ -41,6 +53,15 @@ function AnuChatInner() {
   const searchParams = useSearchParams()
   const { messages, uiLang } = useLanguage()
   const cartItems = useCartStore((s) => s.items)
+  const removeItems = useCartStore((s) => s.removeItems)
+  const savedProfiles = useRecipientStore((s) => s.profiles)
+
+  const clearCheckedOutCart = useCallback(
+    (snapshot: CartItem[]) => {
+      removeItems(snapshot.map((i) => i.id))
+    },
+    [removeItems]
+  )
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -60,18 +81,19 @@ function AnuChatInner() {
       const lastUser = [...(patch.messages ?? chatMessages)]
         .reverse()
         .find((m) => m.role === 'user')
+      const snapshot = patch.cartSnapshot ?? useCartStore.getState().items
       await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...patch,
           preview: lastUser?.content?.slice(0, 80) ?? '',
-          productCount: cartItems.reduce((n, i) => n + i.quantity, 0),
-          cartSnapshot: cartItems,
+          productCount: snapshot.reduce((n, i) => n + i.quantity, 0),
+          cartSnapshot: snapshot,
         }),
       })
     },
-    [sessionId, chatMessages, cartItems]
+    [sessionId, chatMessages]
   )
 
   const resetChatUi = useCallback(() => {
@@ -90,10 +112,21 @@ function AnuChatInner() {
       setJourneyStep(session.journeyStep ?? 0)
       
       // Restore the cart state for this specific chat session to prevent "mixing" orders
-      if (session.cartSnapshot) {
-        useCartStore.setState({ items: session.cartSnapshot })
+      if (session.cartSnapshot?.length) {
+        useCartStore.getState().restoreCart(session.cartSnapshot)
       } else {
-        useCartStore.setState({ items: [] })
+        const cancelledCheckout = session.messages.find(
+          (m) => m.payload?.type === 'checkout' && m.payload.cancelled
+        )
+        const restore =
+          cancelledCheckout?.payload?.type === 'checkout'
+            ? cancelledCheckout.payload.cartRestore
+            : undefined
+        if (restore?.length) {
+          useCartStore.getState().restoreCart(restore)
+        } else {
+          useCartStore.getState().clearCart()
+        }
       }
 
       router.replace(`/chat?session=${id}`, { scroll: false })
@@ -205,6 +238,7 @@ function AnuChatInner() {
               giftMessage: i.giftMessage,
               icingText: i.icingText,
             })),
+            savedProfiles: savedProfiles.length ? savedProfiles : undefined,
           }),
         })
 
@@ -257,6 +291,17 @@ function AnuChatInner() {
                     type: 'checkout',
                     orderResult: evt.payload.orderResult as OrderResult,
                     text: displayText,
+                    items: (evt.payload as ChatPayload & { type: 'checkout' }).items,
+                    cartRestore: (evt.payload as ChatPayload & { type: 'checkout' }).cartRestore,
+                    recipient: (evt.payload as ChatPayload & { type: 'checkout' }).recipient,
+                    subtotal: (evt.payload as ChatPayload & { type: 'checkout' }).subtotal,
+                    deliveryFee: (evt.payload as ChatPayload & { type: 'checkout' }).deliveryFee,
+                    total: (evt.payload as ChatPayload & { type: 'checkout' }).total,
+                    giftMessage: (evt.payload as ChatPayload & { type: 'checkout' }).giftMessage,
+                    senderName: (evt.payload as ChatPayload & { type: 'checkout' }).senderName,
+                    senderEmail: (evt.payload as ChatPayload & { type: 'checkout' }).senderEmail,
+                    specialInstructions: (evt.payload as ChatPayload & { type: 'checkout' })
+                      .specialInstructions,
                   }
                 }
               }
@@ -272,8 +317,15 @@ function AnuChatInner() {
         if (payload?.type === 'order_tracking') nextJourney = 4
         setJourneyStep(nextJourney)
 
-        if (payload?.type === 'chat' && payload.chips) {
-          setSuggestedChips(payload.chips)
+        const chipSource =
+          payload && 'chips' in payload ? payload.chips : undefined
+        const inferred = inferChipsFromAssistantText(displayText, uiLang)
+        if (payload?.type === 'checkout') {
+          setSuggestedChips(getAfterCheckoutChips(uiLang))
+        } else if (payload?.type === 'plan_board' && !(payload as { plan?: PlanBoard }).plan?.occasion) {
+          setSuggestedChips(mergeChips(chipSource, getOccasionChips(uiLang)))
+        } else {
+          setSuggestedChips(mergeChips(chipSource, inferred))
         }
 
         const finalMessages: ChatMessage[] = [
@@ -287,7 +339,18 @@ function AnuChatInner() {
         ]
 
         setChatMessages(finalMessages)
-        await persistSession({ messages: finalMessages, journeyStep: nextJourney })
+
+        if (payload?.type === 'checkout') {
+          const snapshot = (payload.cartRestore ?? cartItems).map((i) => ({ ...i }))
+          clearCheckedOutCart(snapshot)
+          await persistSession({
+            messages: finalMessages,
+            journeyStep: nextJourney,
+            cartSnapshot: useCartStore.getState().items,
+          })
+        } else {
+          await persistSession({ messages: finalMessages, journeyStep: nextJourney })
+        }
       } catch {
         setChatMessages((prev) => {
           const next = [...prev]
@@ -308,18 +371,92 @@ function AnuChatInner() {
       isStreaming,
       uiLang,
       cartItems,
+      savedProfiles,
       messages.errors.generic,
       journeyStep,
       persistSession,
+      clearCheckedOutCart,
     ]
   )
 
-  const handleRecipientSubmit = (r: Recipient) => {
-    const cartSummary = cartItems.map(i => `${i.name} × ${i.quantity} = Rs. ${i.price * i.quantity}`).join(', ')
-    sendMessage(
-      `CHECKOUT_DETAILS: Cart: [${cartSummary}]; Recipient: Name=${r.name}; Phone=${r.phone}; Address=${r.address}; City=${r.city}; Date=${r.date}`
-    )
+  const handlePlanBoardCheckout = (data: CheckoutDetailsInput) => {
+    sendMessage(buildCheckoutDetailsMessage(data, cartItems))
   }
+
+  const handleCheckoutSuccess = useCallback(
+    (ctx: CheckoutSuccessPayload) => {
+      const snapshot = ctx.cartRestore.map((i) => ({ ...i }))
+      clearCheckedOutCart(snapshot)
+
+      const checkoutMsg: ChatMessage = {
+        role: 'assistant',
+        content:
+          'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉',
+        payload: {
+          type: 'checkout',
+          orderResult: ctx.orderResult,
+          text: 'Order ready for payment',
+          items: ctx.items,
+          cartRestore: ctx.cartRestore,
+          recipient: ctx.recipient,
+          subtotal: ctx.subtotal,
+          total: ctx.total,
+          giftMessage: ctx.giftMessage,
+          senderName: ctx.senderName,
+          senderEmail: ctx.senderEmail,
+          specialInstructions: ctx.specialInstructions,
+        },
+      }
+      setChatMessages((prev) => {
+        const next = [...prev, checkoutMsg]
+        void persistSession({
+          messages: next,
+          journeyStep: 3,
+          cartSnapshot: useCartStore.getState().items,
+        })
+        return next
+      })
+      setJourneyStep(3)
+      setSuggestedChips(getAfterCheckoutChips(uiLang))
+    },
+    [uiLang, persistSession, clearCheckedOutCart]
+  )
+
+  const handleAddToCart = useCallback(
+    (product: { id: string; name: string; price: number }) => {
+      const followUp: ChatMessage = {
+        role: 'assistant',
+        content: addToCartFollowUp(product.name, uiLang),
+      }
+      setChatMessages((prev) => {
+        const next = [...prev, followUp]
+        void persistSession({ messages: next })
+        return next
+      })
+      setSuggestedChips(getAfterAddToCartChips(uiLang))
+    },
+    [uiLang, persistSession]
+  )
+
+  const handleCheckoutCancel = useCallback(
+    (messageIndex: number) => {
+      setChatMessages((prev) => {
+        const next = prev.map((msg, idx) => {
+          if (idx !== messageIndex || msg.payload?.type !== 'checkout') return msg
+          return {
+            ...msg,
+            payload: { ...msg.payload, cancelled: true },
+          }
+        })
+        void persistSession({
+          messages: next,
+          cartSnapshot: useCartStore.getState().items,
+        })
+        return next
+      })
+    },
+    [persistSession]
+  )
 
   useEffect(() => {
     if (autoSent.current || chatMessages.length === 0) return
@@ -335,7 +472,7 @@ function AnuChatInner() {
 
   return (
     <AppShell
-      variant="chat"
+      ambient
       collapsibleSidebar
       sidebar={
         <RecentSessionsSidebar
@@ -345,6 +482,7 @@ function AnuChatInner() {
         />
       }
       onCheckoutViaChat={sendMessage}
+      onCheckoutSuccess={handleCheckoutSuccess}
     >
       <div className="chat-layout mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden">
         {/* Messages */}
@@ -391,12 +529,15 @@ function AnuChatInner() {
                         </div>
                       )}
                       {msg.payload?.type === 'product_trio' && (
-                        <ProductTrioCard trio={msg.payload.trio as ProductTrio} />
+                        <ProductTrioCard
+                          trio={msg.payload.trio as ProductTrio}
+                          onAddToCart={handleAddToCart}
+                        />
                       )}
                       {msg.payload?.type === 'plan_board' && (
                         <PlanBoardCard
                           plan={msg.payload.plan as PlanBoard}
-                          onRecipientSubmit={handleRecipientSubmit}
+                          onCheckoutSubmit={handlePlanBoardCheckout}
                         />
                       )}
                       {msg.payload?.type === 'order_tracking' && (
@@ -406,12 +547,18 @@ function AnuChatInner() {
                         <LockedCheckoutCard
                           orderResult={msg.payload.orderResult}
                           text={msg.payload.text}
-                          items={(msg.payload as any).items}
-                          recipient={(msg.payload as any).recipient}
-                          subtotal={(msg.payload as any).subtotal}
-                          deliveryFee={(msg.payload as any).deliveryFee}
-                          total={(msg.payload as any).total}
-                          giftMessage={(msg.payload as any).giftMessage}
+                          items={msg.payload.items}
+                          cartRestore={msg.payload.cartRestore}
+                          recipient={msg.payload.recipient}
+                          subtotal={msg.payload.subtotal}
+                          deliveryFee={msg.payload.deliveryFee}
+                          total={msg.payload.total}
+                          giftMessage={msg.payload.giftMessage}
+                          senderName={msg.payload.senderName}
+                          senderEmail={msg.payload.senderEmail}
+                          specialInstructions={msg.payload.specialInstructions}
+                          cancelled={msg.payload.cancelled}
+                          onCancel={() => handleCheckoutCancel(i)}
                         />
                       )}
                     </div>

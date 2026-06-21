@@ -114,8 +114,8 @@ export function RecentSessionsSidebar({
       aria-label={messages.sessions.title}
     >
       {/* Sidebar Header Strip perfectly matching Topnav */}
-      <div 
-        className="kap-topnav justify-between z-20 relative w-[calc(100%+1px)] !px-4 border-b border-r border-white/20" 
+      <div
+        className="kap-topnav justify-between z-20 relative w-[calc(100%+1px)] !px-4 border-b border-r border-white/20"
         style={{ marginRight: '-1px' }}
       >
         <Link
@@ -168,11 +168,10 @@ export function RecentSessionsSidebar({
                 <button
                   type="button"
                   onClick={() => openSession(s.id)}
-                  className={`flex w-full flex-col items-start gap-1 rounded-xl px-3 py-2.5 transition-colors ${
-                    isActive 
-                      ? 'bg-[#401F60] shadow-md' 
+                  className={`flex w-full flex-col items-start gap-1 rounded-xl px-3 py-2.5 transition-colors ${isActive
+                      ? 'bg-[#401F60] shadow-md'
                       : 'hover:bg-[var(--rail-hover)]'
-                  }`}
+                    }`}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className={`truncate text-sm font-bold ${isActive ? 'text-white' : 'text-[var(--text-primary)]'}`}>
@@ -182,15 +181,15 @@ export function RecentSessionsSidebar({
                       {formatRelativeTime(s.updatedAt)}
                     </span>
                   </div>
-                  
+
                   {s.preview && (
                     <span className={`line-clamp-1 w-[90%] text-left text-xs italic ${isActive ? 'text-white/70' : 'text-[var(--text-secondary)]'}`}>
                       "{s.preview}"
                     </span>
                   )}
-                  
+
                   {s.productCount > 0 && (
-                    <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${isActive ? 'bg-white/15 text-white' : 'bg-kapruka-accent/20 text-kapruka-header'}`}>
+                    <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${isActive ? 'bg-white/15 text-white' : 'bg-kapruka-accent/20 text-kapruka-header dark:text-[var(--text-primary)]'}`}>
                       🛒 {s.productCount} item{s.productCount !== 1 ? 's' : ''}
                     </div>
                   )}

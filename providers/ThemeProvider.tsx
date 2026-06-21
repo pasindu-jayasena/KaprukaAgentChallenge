@@ -19,12 +19,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('anu-theme') as Theme | null
-    const initial =
-      stored === 'dark' || stored === 'light'
-        ? stored
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
+    const initial: Theme = stored === 'dark' ? 'dark' : 'light'
     setThemeState(initial)
     document.documentElement.dataset.theme = initial
   }, [])

@@ -11,6 +11,8 @@ interface CartStore {
   setGiftMessage: (id: string, message: string) => void
   setIcingText: (id: string, text: string) => void
   clearCart: () => void
+  removeItems: (ids: string[]) => void
+  restoreCart: (items: CartItem[]) => void
   toggleSelection: (id: string) => void
   selectAll: () => void
   clearSelection: () => void
@@ -83,6 +85,18 @@ export const useCartStore = create<CartStore>()(
         })),
 
       clearCart: () => set({ items: [], selectedIds: [] }),
+
+      removeItems: (ids) =>
+        set((state) => ({
+          items: state.items.filter((i) => !ids.includes(i.id)),
+          selectedIds: state.selectedIds.filter((sid) => !ids.includes(sid)),
+        })),
+
+      restoreCart: (items) =>
+        set({
+          items: items.map((i) => ({ ...i })),
+          selectedIds: items.map((i) => i.id),
+        }),
 
       toggleSelection: (id) =>
         set((state) => ({

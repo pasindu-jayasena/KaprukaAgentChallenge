@@ -31,6 +31,9 @@ export interface PlanBoard {
     icing_text?: string | null
   }>
   gift_message?: string
+  sender_name?: string
+  sender_email?: string
+  special_instructions?: string
   subtotal?: number
   delivery_fee?: number
   total?: number
@@ -70,6 +73,42 @@ export interface Recipient {
   date: string
 }
 
+export interface SavedCheckoutProfile {
+  recipient: Recipient
+  senderName: string
+  senderEmail: string
+  giftMessage?: string
+  specialInstructions?: string
+}
+
+export interface CheckoutDetailsInput {
+  senderName: string
+  senderEmail: string
+  giftMessage?: string
+  specialInstructions?: string
+  recipient: Recipient
+}
+
+export interface CheckoutSuccessPayload {
+  orderResult: OrderResult
+  items: Array<{
+    id?: string
+    name: string
+    price: number
+    quantity: number
+    image?: string | null
+    url?: string | null
+  }>
+  cartRestore: CartItem[]
+  recipient: { name: string; phone: string; city: string; address: string; date: string }
+  subtotal: number
+  total: number
+  giftMessage?: string
+  senderName?: string
+  senderEmail?: string
+  specialInstructions?: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -79,9 +118,9 @@ export interface ChatMessage {
 
 export type ChatPayload =
   | { type: 'chat'; text: string; chips?: string[] }
-  | { type: 'product_trio'; trio: ProductTrio; rawText?: string }
-  | { type: 'plan_board'; plan: PlanBoard; rawText?: string }
-  | { type: 'order_tracking'; tracking: OrderTracking; rawText?: string }
+  | { type: 'product_trio'; trio: ProductTrio; rawText?: string; chips?: string[] }
+  | { type: 'plan_board'; plan: PlanBoard; rawText?: string; chips?: string[] }
+  | { type: 'order_tracking'; tracking: OrderTracking; rawText?: string; chips?: string[] }
   | {
       type: 'checkout'
       orderResult: OrderResult
@@ -92,6 +131,11 @@ export type ChatPayload =
       deliveryFee?: number
       total?: number
       giftMessage?: string
+      senderName?: string
+      senderEmail?: string
+      specialInstructions?: string
+      cartRestore?: CartItem[]
+      cancelled?: boolean
     }
 
 export interface StatusEvent {

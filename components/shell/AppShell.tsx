@@ -95,11 +95,11 @@ export function AppShell({
           {header}
 
           <div
-            className={`shell-main flex min-h-0 flex-1 flex-col overflow-hidden ${scrollMain ? 'shell-main--home' : ''}`}
+            className={`shell-main flex min-h-0 flex-1 flex-col ${scrollMain ? 'shell-main--home' : 'overflow-hidden'}`}
           >
-            <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className={scrollMain ? 'min-w-0 flex-1' : 'flex min-h-0 flex-1 overflow-hidden'}>
               <main
-                className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+                className={`min-w-0 flex-1 ${scrollMain ? '' : 'flex min-h-0 flex-col overflow-hidden'} ${
                   ambient ? 'px-2 pb-2 sm:px-3 sm:pb-3' : ''
                 }`}
               >

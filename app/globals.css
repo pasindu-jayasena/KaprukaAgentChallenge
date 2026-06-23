@@ -338,6 +338,35 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   box-shadow: 0 2px 8px rgba(252, 226, 42, 0.3);
 }
 
+@media (max-width: 359px) {
+  .kap-topnav {
+    padding-inline: 0.25rem;
+  }
+
+  .kap-logo {
+    font-size: 1.08rem;
+    letter-spacing: 0;
+  }
+
+  .kap-logo > span:last-child {
+    font-size: 0.875rem;
+  }
+
+  .kap-nav-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .kap-lang-pill {
+    gap: 1px;
+    padding: 1px;
+  }
+
+  .kap-lang-btn {
+    padding: 3px 5px;
+    font-size: 0.56rem;
+  }
+}
 /* ═══════════════════════════════════════════════
    KAPRUKA SUB-NAVIGATION
    ═══════════════════════════════════════════════ */
@@ -386,14 +415,14 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
 
 .product-rail {
   scrollbar-width: thin;
-  scrollbar-color: rgba(64, 31, 96, 0.25) transparent;
+  scrollbar-color: rgba(64, 31, 96, 0.2) transparent;
 }
 .product-rail::-webkit-scrollbar {
-  height: 4px;
+  height: 3px;
 }
 .product-rail::-webkit-scrollbar-thumb {
-  background: rgba(64, 31, 96, 0.25);
-  border-radius: 4px;
+  background: rgba(64, 31, 96, 0.2);
+  border-radius: 999px;
 }
 
 /* ═══════════════════════════════════════════════
@@ -570,6 +599,18 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
 .shell-main--home {
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(64, 31, 96, 0.18) transparent;
+}
+.shell-main--home::-webkit-scrollbar {
+  width: 4px;
+}
+.shell-main--home::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shell-main--home::-webkit-scrollbar-thumb {
+  background: rgba(64, 31, 96, 0.18);
+  border-radius: 999px;
 }
 
 .shell-right {
@@ -657,6 +698,14 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+@media (max-width: 359px) {
+  .chat-input-dock {
+    margin: 0 0.25rem 0.375rem;
+    padding: 0.5rem 0.5rem max(0.625rem, env(safe-area-inset-bottom));
+    border-radius: 14px;
+  }
+}
+
 /* ── Progress Input Bar ── */
 .progress-input-wrap {
   position: relative;
@@ -693,6 +742,17 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   display: flex;
   align-items: center;
   padding: 0.375rem 0.375rem 0.375rem 1.125rem;
+}
+
+@media (max-width: 359px) {
+  .progress-input-inner {
+    gap: 0.375rem;
+    padding-left: 0.875rem;
+  }
+
+  .progress-input-inner input {
+    font-size: 0.875rem;
+  }
 }
 
 .input-actions {

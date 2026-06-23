@@ -11,6 +11,13 @@ import { parseCheckoutDetails } from '@/lib/parse-checkout-details'
 import { messagesForModel } from '@/lib/conversation-context'
 import { isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
+import { polishAssistantText } from '@/lib/prompts/singlish-style'
+import { getSinglishDirectReply } from '@/lib/singlish-dialogue'
+import {
+  checkoutDetailsAreValid,
+  forcePlanToCollectDetails,
+  normalizeCheckoutDetails,
+} from '@/lib/checkout-validation'
 import type { CartItem, ChatPayload, CheckoutDetailsInput } from '@/types'
 
 export const maxDuration = 60
@@ -230,6 +237,18 @@ export async function POST(req: Request) {
 
         // Structured checkout from chat — show review card first, not payment slip
         if (checkoutDetails && cart.length > 0) {
+          const normalizedCheckout = normalizeCheckoutDetails(checkoutDetails)
+          if (!checkoutDetailsAreValid(normalizedCheckout)) {
+            emit({
+              type: 'final',
+              payload: {
+                type: 'chat',
+                text:
+                  'I need the actual recipient name, phone, full address, city, delivery date, and sender name before I can prepare the order review. Please update those details and try again.',
+              },
+            })
+            return
+          }
           emit({
             type: 'status',
             icon: 'search',
@@ -237,13 +256,11 @@ export async function POST(req: Request) {
             label: 'Checking delivery fee',
           })
           try {
-            const preview = await getCheckoutPreview(cart, checkoutDetails)
+            const preview = await getCheckoutPreview(cart, normalizedCheckout)
             emit({
               type: 'final',
-              payload: buildOrderPreviewPayload(cart, checkoutDetails, preview),
+              payload: buildOrderPreviewPayload(cart, normalizedCheckout, preview),
             })
-            clearInterval(heartbeatTimer)
-            controller.close()
             return
           } catch (previewErr) {
             console.error('Checkout preview error:', previewErr)
@@ -254,8 +271,6 @@ export async function POST(req: Request) {
                 text: 'I could not load your order summary. Please check your details and try again.',
               },
             })
-            clearInterval(heartbeatTimer)
-            controller.close()
             return
           }
         }
@@ -266,6 +281,31 @@ export async function POST(req: Request) {
 
         const onStatus = (name: string, args: Record<string, unknown>) => {
           emit({ type: 'status', ...statusLabel(name, args) })
+        }
+
+        const explicitEnglishRequest =
+          !!lastUserMessage &&
+          /\b(english|ingrisi|ingreesi)\s+(walin|valin|with|in)\b/i.test(
+            lastUserMessage.content
+          )
+
+        if (
+          (chatLang === 'singlish' || explicitEnglishRequest) &&
+          lastUserMessage &&
+          !checkoutDetails
+        ) {
+          const directReply = getSinglishDirectReply(lastUserMessage.content)
+          if (directReply) {
+            emit({
+              type: 'final',
+              payload: {
+                type: 'chat',
+                text: polishAssistantText(directReply.text, chatLang),
+                chips: directReply.chips,
+              },
+            })
+            return
+          }
         }
 
         const modelMessages = messagesForModel(messages)
@@ -313,7 +353,33 @@ export async function POST(req: Request) {
           label: 'Putting it together',
         })
 
-        let payload: ChatPayload = buildPayload(sanitizeAssistantText(responseText))
+        const assistantText = polishAssistantText(
+          sanitizeAssistantText(responseText),
+          chatLang
+        )
+        let payload: ChatPayload = buildPayload(assistantText)
+
+        if (payload.type === 'plan_board' && !checkoutDetailsAreValid({
+          senderName: String(payload.plan.sender_name ?? ''),
+          senderEmail: String(payload.plan.sender_email ?? 'guest@kapruka.com'),
+          giftMessage: payload.plan.gift_message,
+          specialInstructions: payload.plan.special_instructions,
+          recipient: {
+            name: String(payload.plan.recipient?.name ?? ''),
+            phone: String(payload.plan.recipient?.phone ?? ''),
+            address: String(payload.plan.recipient?.address ?? ''),
+            city: String(payload.plan.delivery?.city ?? ''),
+            date: String(payload.plan.delivery?.date ?? ''),
+          },
+        })) {
+          payload = {
+            type: 'plan_board',
+            plan: forcePlanToCollectDetails(payload.plan),
+            rawText:
+              'Before I prepare the payment link, please confirm the actual recipient and sender details.',
+            chips: payload.chips,
+          }
+        }
 
         if (
           payload.type === 'product_trio' &&
@@ -328,16 +394,26 @@ export async function POST(req: Request) {
         }
 
         if (pendingOrderArgs && cart.length > 0) {
-          const details = orderArgsToCheckoutDetails(
+          const details = normalizeCheckoutDetails(orderArgsToCheckoutDetails(
             pendingOrderArgs,
             checkoutDetails ?? undefined
-          )
+          ))
+          if (!checkoutDetailsAreValid(details)) {
+            payload = {
+              type: 'chat',
+              text:
+                'I need the actual recipient name, phone, full address, city, delivery date, and sender name before I can prepare the order review.',
+              chips: ['Enter details', 'Use saved recipient', 'Open cart'],
+            }
+            emit({ type: 'final', payload })
+            return
+          }
           const preview = await getCheckoutPreview(cart, details)
           payload = buildOrderPreviewPayload(
             cart,
             details,
             preview,
-            stripBlocks(sanitizeAssistantText(responseText)) ||
+            stripBlocks(assistantText) ||
               'Please review your order below — tap Confirm when ready.'
           )
         }

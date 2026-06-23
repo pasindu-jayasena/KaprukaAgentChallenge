@@ -8,7 +8,7 @@ export function buildCheckoutDetailsMessage(
   label = 'Cart'
 ): string {
   const cartSummary = cart
-    .map((i) => `${i.name} × ${i.quantity} = Rs. ${i.price * i.quantity}`)
+    .map((i) => `${i.name} x ${i.quantity} = Rs. ${i.price * i.quantity}`)
     .join(', ')
   const parts = [
     `CHECKOUT_DETAILS: ${label}: [${cartSummary}]`,
@@ -25,12 +25,12 @@ export function buildCheckoutDetailsMessage(
   return parts.join('; ')
 }
 
-/** Internal-only — never expose other names or "database" language to the customer. */
+/** Internal-only - never expose other names or "database" language to the customer. */
 export function buildSavedCheckoutBlock(profiles: SavedCheckoutProfile[]): string {
   if (!profiles.length) return ''
 
   const lines = [
-    '═══ SAVED RECIPIENTS (internal only) ═══',
+    'SAVED RECIPIENTS (internal only)',
     'Match by first name (case-insensitive). Never mention other names to the customer.',
     '',
   ]
@@ -51,10 +51,12 @@ export function buildSavedCheckoutBlock(profiles: SavedCheckoutProfile[]): strin
 
   lines.push(
     'FLOW:',
-    '1. Ask ONLY for recipient name — nothing about checking files or databases.',
-    '2. If name matches → show phone/address/city and ask "Are these details still correct?"',
-    '3. If no match → ask for phone, address, city, date in one friendly message.',
-    '4. Never say "on file", "saved", "database", or mention other people.',
+    '1. Ask ONLY for recipient name - nothing about checking files or databases.',
+    '2. If name matches, show phone/address/city and ask "Are these details still correct?"',
+    '3. If customer gives GF/BF/wife/friend/amma etc, ask for actual recipient name before using details.',
+    '4. Sender name is separate from recipient name. Never mix sender and recipient fields.',
+    '5. If no match, ask for phone, address, city, date in one friendly message.',
+    '6. Never say "on file", "saved", "database", or mention other people.'
   )
 
   return lines.filter(Boolean).join('\n')

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { Source_Sans_3, Noto_Sans_Sinhala, Noto_Sans_Tamil } from 'next/font/google'
 import { LanguageProvider } from '@/providers/LanguageProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
@@ -42,11 +43,9 @@ export default function RootLayout({
       className={`${sourceSans.variable} ${notoSinhala.variable} ${notoTamil.variable} h-full`}
     >
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('anu-theme');if(!t){localStorage.setItem('anu-theme','light');t='light';}if(t==='dark')document.documentElement.dataset.theme='dark';else document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}})();`,
-          }}
-        />
+        <Script id="anu-theme-init" strategy="beforeInteractive">
+          {`(function(){try{var t=localStorage.getItem('anu-theme');if(!t){localStorage.setItem('anu-theme','light');t='light';}if(t==='dark')document.documentElement.dataset.theme='dark';else document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}})();`}
+        </Script>
       </head>
       <body className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col antialiased">
         <ThemeProvider>

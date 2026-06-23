@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createKaprukaOrder } from '@/lib/checkout'
 import { resolveReceiptTotals } from '@/lib/parse-order-result'
+import {
+  normalizeCheckoutDetails,
+  validateCheckoutDetails,
+} from '@/lib/checkout-validation'
 
 const schema = z.object({
   cart: z.array(
@@ -71,14 +75,28 @@ export async function POST(req: Request) {
     }
 
     const body = parsed.data
+    const normalizedDetails = normalizeCheckoutDetails({
+      senderName: body.senderName,
+      senderEmail: body.senderEmail,
+      giftMessage: body.giftMessage ?? undefined,
+      specialInstructions: body.specialInstructions ?? undefined,
+      recipient: body.recipient,
+    })
+    const detailIssues = validateCheckoutDetails(normalizedDetails)
+    if (detailIssues.length) {
+      return NextResponse.json(
+        { error: detailIssues[0] },
+        { status: 400 }
+      )
+    }
 
     // Sanitize string inputs
     const sanitizedRecipient = {
-      name: sanitize(body.recipient.name),
-      phone: sanitize(body.recipient.phone),
-      address: sanitize(body.recipient.address),
-      city: sanitize(body.recipient.city),
-      date: body.recipient.date,
+      name: sanitize(normalizedDetails.recipient.name),
+      phone: sanitize(normalizedDetails.recipient.phone),
+      address: sanitize(normalizedDetails.recipient.address),
+      city: sanitize(normalizedDetails.recipient.city),
+      date: normalizedDetails.recipient.date,
     }
 
     const orderResult = await createKaprukaOrder({
@@ -92,11 +110,11 @@ export async function POST(req: Request) {
         icingText: i.icingText ? sanitize(i.icingText) : undefined,
       })),
       recipient: sanitizedRecipient,
-      senderName: sanitize(body.senderName),
-      senderEmail: sanitize(body.senderEmail),
-      giftMessage: body.giftMessage ? sanitize(body.giftMessage) : undefined,
-      specialInstructions: body.specialInstructions
-        ? sanitize(body.specialInstructions)
+      senderName: sanitize(normalizedDetails.senderName),
+      senderEmail: sanitize(normalizedDetails.senderEmail),
+      giftMessage: normalizedDetails.giftMessage ? sanitize(normalizedDetails.giftMessage) : undefined,
+      specialInstructions: normalizedDetails.specialInstructions
+        ? sanitize(normalizedDetails.specialInstructions)
         : undefined,
     })
 
@@ -118,10 +136,10 @@ export async function POST(req: Request) {
       subtotal: pricing.subtotal,
       deliveryFee: pricing.deliveryFee,
       total: pricing.total,
-      senderName: body.senderName,
-      senderEmail: body.senderEmail,
-      giftMessage: body.giftMessage,
-      specialInstructions: body.specialInstructions,
+      senderName: normalizedDetails.senderName,
+      senderEmail: normalizedDetails.senderEmail,
+      giftMessage: normalizedDetails.giftMessage,
+      specialInstructions: normalizedDetails.specialInstructions,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Checkout failed'

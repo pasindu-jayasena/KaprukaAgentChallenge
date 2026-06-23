@@ -5,7 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useState,
+  useSyncExternalStore,
 } from 'react'
 import type { UiLang } from '@/types'
 import { getMessages, formatMessage, type Messages } from '@/lib/i18n'
@@ -25,16 +25,34 @@ function readStoredUiLang(): UiLang {
   return stored && ['en', 'si', 'ta'].includes(stored) ? stored : 'en'
 }
 
+const languageListeners = new Set<() => void>()
+
+function subscribeLanguage(onChange: () => void) {
+  if (typeof window === 'undefined') return () => {}
+  languageListeners.add(onChange)
+  queueMicrotask(onChange)
+  return () => languageListeners.delete(onChange)
+}
+
+function emitLanguageChange() {
+  languageListeners.forEach((listener) => listener())
+}
+
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [uiLang, setUiLangState] = useState<UiLang>(readStoredUiLang)
+  const uiLang = useSyncExternalStore<UiLang>(
+    subscribeLanguage,
+    readStoredUiLang,
+    () => 'en'
+  )
 
   const setUiLang = useCallback((lang: UiLang) => {
-    setUiLangState(lang)
     localStorage.setItem('uiLang', lang)
     document.documentElement.lang = lang
+    emitLanguageChange()
   }, [])
 
   useEffect(() => {
+    localStorage.setItem('uiLang', uiLang)
     document.documentElement.lang = uiLang
   }, [uiLang])
 

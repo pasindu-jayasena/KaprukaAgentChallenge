@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@siyabasa/singlish": "^1.0.4",
     "@upstash/redis": "^1.38.0",
     "framer-motion": "^12.40.0",
     "groq-sdk": "^1.2.1",

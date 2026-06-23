@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { UiLang } from '@/types'
 
 const BROWSER_LANG: Record<UiLang, string> = {
@@ -41,14 +41,20 @@ function detectSpeechSupport(): boolean {
   return canRecord || !!SR
 }
 
+function subscribeSpeechSupport(onChange: () => void) {
+  if (typeof window === 'undefined') return () => {}
+  queueMicrotask(onChange)
+  return () => {}
+}
+
 export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
   const [listening, setListening] = useState(false)
-  const [supported, setSupported] = useState(false)
+  const supported = useSyncExternalStore(
+    subscribeSpeechSupport,
+    detectSpeechSupport,
+    () => false
+  )
   const [transcribing, setTranscribing] = useState(false)
-
-  useEffect(() => {
-    setSupported(detectSpeechSupport())
-  }, [])
 
   const recRef = useRef<SpeechRecognition | null>(null)
   const mediaRef = useRef<MediaRecorder | null>(null)

@@ -101,7 +101,7 @@ const en = {
     updateDetails: 'No, update details',
     askRecipientName: 'Who are you sending this gift to?',
     confirmSavedTitle: "Is {name}'s details correct?",
-    confirmSavedSubtitle: 'We found these details from your last order. Pick a delivery date and confirm.',
+    confirmSavedSubtitle: 'This fills recipient delivery details only. Sender details stay as entered. Pick a delivery date and confirm.',
     detailsCorrect: 'Yes, details are correct',
     continue: 'Continue',
     enterAllDetails: 'Enter all details manually',
@@ -176,6 +176,7 @@ const en = {
     prompt: 'Are these details correct?',
     savedRecipientPrompt: "Is {name}'s details correct?",
     confirmed: 'Order confirmed — payment link below.',
+    thankYou: 'Thank you for choosing Kapruka. Complete the payment to finalize the order, and come back anytime for the next gift.',
   },
 } as const
 

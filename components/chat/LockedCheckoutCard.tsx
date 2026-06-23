@@ -229,6 +229,9 @@ export function LockedCheckoutCard({
               Pay on Kapruka.com
               <ExternalLink className="h-3 w-3" />
             </a>
+            <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
+              {messages.confirm.thankYou}
+            </p>
           </div>
         )}
 

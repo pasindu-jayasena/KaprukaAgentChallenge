@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getCheckoutPreview } from '@/lib/checkout-preview'
+import {
+  normalizeCheckoutDetails,
+  validateCheckoutDetails,
+} from '@/lib/checkout-validation'
 
 const schema = z.object({
   cart: z.array(
@@ -33,6 +37,18 @@ export async function POST(req: Request) {
     }
 
     const body = parsed.data
+    const details = normalizeCheckoutDetails({
+      senderName: body.senderName,
+      senderEmail: body.senderEmail,
+      giftMessage: body.giftMessage ?? undefined,
+      specialInstructions: body.specialInstructions ?? undefined,
+      recipient: body.recipient,
+    })
+    const detailIssues = validateCheckoutDetails(details)
+    if (detailIssues.length) {
+      return NextResponse.json({ error: detailIssues[0] }, { status: 400 })
+    }
+
     const preview = await getCheckoutPreview(
       body.cart.map((i) => ({
         id: i.id,
@@ -43,22 +59,16 @@ export async function POST(req: Request) {
         quantity: i.quantity,
         icingText: i.icingText ?? undefined,
       })),
-      {
-        senderName: body.senderName,
-        senderEmail: body.senderEmail,
-        giftMessage: body.giftMessage ?? undefined,
-        specialInstructions: body.specialInstructions ?? undefined,
-        recipient: body.recipient,
-      }
+      details
     )
 
     return NextResponse.json({
       ...preview,
-      recipient: body.recipient,
-      senderName: body.senderName,
-      senderEmail: body.senderEmail,
-      giftMessage: body.giftMessage,
-      specialInstructions: body.specialInstructions,
+      recipient: details.recipient,
+      senderName: details.senderName,
+      senderEmail: details.senderEmail,
+      giftMessage: details.giftMessage,
+      specialInstructions: details.specialInstructions,
     })
   } catch (e) {
     console.error('Checkout preview error:', e)

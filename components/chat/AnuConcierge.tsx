@@ -38,6 +38,7 @@ import type {
   StatusEvent,
   SessionRecord,
   CartItem,
+  ChatLang,
   CheckoutDetailsInput,
 } from '@/types'
 import { formatCheckoutUserDisplay, enrichMessageForModel } from '@/lib/conversation-context'
@@ -76,6 +77,7 @@ function AnuChatInner() {
   const autoSent = useRef(false)
   const loaded = useRef(false)
   const pendingSession = useRef<string | null>(null)
+  const lastLocalChatLang = useRef<Exclude<ChatLang, 'en'> | null>(null)
 
   const persistSession = useCallback(
     async (patch: Partial<SessionRecord> & { messages?: ChatMessage[] }) => {
@@ -209,7 +211,17 @@ function AnuChatInner() {
     async (text: string) => {
       if (!text.trim() || isStreaming) return
 
-      const detected = detectChatLanguage(text)
+      const detectedRaw = detectChatLanguage(text)
+      const isShortReply = text.trim().split(/\s+/).length <= 5
+      const wantsEnglish = /\b(english|ingrisi|ingreesi)\s+(walin|valin|with|in)\b/i.test(text)
+      const detected =
+        wantsEnglish
+          ? 'en'
+          : detectedRaw === 'en' && isShortReply && lastLocalChatLang.current
+          ? lastLocalChatLang.current
+          : detectedRaw
+      if (wantsEnglish) lastLocalChatLang.current = null
+      if (detected !== 'en') lastLocalChatLang.current = detected
       setStatusLines([])
       setSuggestedChips([])
 
@@ -400,7 +412,7 @@ function AnuChatInner() {
       const checkoutMsg: ChatMessage = {
         role: 'assistant',
         content:
-          'Your order is locked in! Tap the payment link below to complete it on Kapruka.com 🎉',
+          'Your order is ready for payment. Thank you for choosing Kapruka — tap the payment link below to complete it.',
         payload: {
           type: 'checkout',
           orderResult: ctx.orderResult,
@@ -644,7 +656,7 @@ function AnuChatInner() {
           <WelcomeGuide />
           {chatMessages.map((msg, i) => {
             const isLastStreaming = msg.isStreaming && i === chatMessages.length - 1
-            if (isLastStreaming && isStreaming && !msg.content && statusLines.length > 0) {
+            if (isLastStreaming && isStreaming && !msg.content) {
               return (
                 <FlowThinking key={i} events={statusLines} fallback={messages.chat.flowOnIt} />
               )

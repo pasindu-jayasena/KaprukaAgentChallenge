@@ -40,7 +40,7 @@ const ta = {
     title: 'Anu · Kapruka concierge',
     openingHeadline: 'இன்று Anu உங்களுக்காக என்ன செய்ய வேண்டும்?',
     openingSub: 'Kapruka-வில் சரியான பொருளுக்கு உங்கள் பாதை.',
-    openingPlaceholder: 'Birthday cake, நாளை மலர்கள், Galle விநியோகம்…',
+    openingPlaceholder: 'உதா: "என் மனைவிக்கு Rs. 15000க்குள் ஒரு சிறப்பு anniversary பரிசு"',
     headline: 'இன்று என்ன தேட வேண்டும்?',
     subhead: 'பரிசுகள், மளிகை, மின்னணு — என்ன வேண்டும் சொல்லுங்கள்.',
     placeholder: 'கேளுங்கள், மாற்றுங்கள், அல்லது என்ன மாறியது சொல்லுங்கள்…',
@@ -103,7 +103,7 @@ const ta = {
     updateDetails: 'இல்லை, update பண்ணுங்கள்',
     askRecipientName: 'இந்த gift யாருக்கு அனுப்புறீங்க?',
     confirmSavedTitle: '{name} உடைய details சரியா?',
-    confirmSavedSubtitle: 'கடைசி order-லிருந்து details கிடைத்தது. delivery date தேர்ந்து confirm செய்யுங்கள்.',
+    confirmSavedSubtitle: 'Recipient delivery details mattum fill aagum. Sender details neenga enter pannina madhiri irukkum. Delivery date select panni confirm pannunga.',
     detailsCorrect: 'ஆம், details சரி',
     continue: 'Continue',
     enterAllDetails: 'Details manually enter பண்ணுங்கள்',
@@ -178,6 +178,7 @@ const ta = {
     prompt: 'இந்த details சரியா?',
     savedRecipientPrompt: '{name} உடைய details சரியா?',
     confirmed: 'Order confirm — payment link கீழே.',
+    thankYou: 'Kapruka-வை தேர்ந்தெடுத்ததற்கு நன்றி. Order finalize ஆக payment complete செய்யுங்கள். அடுத்த gift வேண்டுமென்றால் Anu இருக்கிறார்.',
   },
 } satisfies Messages
 

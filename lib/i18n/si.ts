@@ -40,7 +40,7 @@ const si = {
     title: 'Anu · Kapruka concierge',
     openingHeadline: 'අද Anu ඔබ වෙනුවෙන් මොනවද කරන්නේ?',
     openingSub: 'Kapruka එකේ හොඳම දේට ඔබේ මාර්ගය.',
-    openingPlaceholder: 'Birthday cake, හෙට මල්, Galleට delivery…',
+    openingPlaceholder: 'උදා: "මගේ බිරිඳට Rs. 15000ට අඩු විශේෂ anniversary තෑග්ගක්"',
     headline: 'අද මම ඔබට මොනවද හොයා දෙන්නේ?',
     subhead: 'තෑගි, සිල්ලර, ඉලෙක්ට්‍රොනික — මොකද ඕනේ කියන්න.',
     placeholder: 'අහන්න, වෙනස් කරන්න, හෝ මොකද වුණේ කියන්න…',
@@ -103,7 +103,7 @@ const si = {
     updateDetails: 'නැහැ, update කරන්න',
     askRecipientName: 'මේ gift එක යවන්නේ කාටද?',
     confirmSavedTitle: '{name} ගේ details හරිද?',
-    confirmSavedSubtitle: 'පසුගිය order එකෙන් details හමු වුණා. delivery date එක තෝරලා confirm කරන්න.',
+    confirmSavedSubtitle: 'Recipient delivery details only. Sender details oyata enter kala widihatama thiyenawa. Delivery date eka thorala confirm karanna.',
     detailsCorrect: 'ඔව්, details correct',
     continue: 'Continue',
     enterAllDetails: 'Details හිස්තැනින් enter කරන්න',
@@ -178,6 +178,7 @@ const si = {
     prompt: 'මේ details හරිද?',
     savedRecipientPrompt: '{name} ගේ details හරිද?',
     confirmed: 'Order confirm — payment link එක යටින්.',
+    thankYou: 'Kapruka තෝරාගත්තට ස්තුතියි. Order එක finalize වෙන්න payment එක complete කරන්න. ආයෙත් gift එකක් ඕනේ නම් Anu ඉන්නවා.',
   },
 } satisfies Messages
 

@@ -5,6 +5,10 @@ import { Calendar, Gift } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useRecipientStore } from '@/store/recipientStore'
 import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
+import {
+  normalizeCheckoutDetails,
+  validateCheckoutDetails,
+} from '@/lib/checkout-validation'
 import type { CheckoutDetailsInput, Recipient, SavedCheckoutProfile } from '@/types'
 
 type Step = 'recipient-name' | 'confirm-saved' | 'full-form'
@@ -19,13 +23,15 @@ interface Props {
 
 function profileToForm(
   profile: SavedCheckoutProfile,
-  deliveryDate: string
+  deliveryDate: string,
+  current: CheckoutDetailsInput
 ): CheckoutDetailsInput {
   return {
-    senderName: profile.senderName,
-    senderEmail: profile.senderEmail,
-    giftMessage: profile.giftMessage,
-    specialInstructions: profile.specialInstructions,
+    ...current,
+    senderName: current.senderName,
+    senderEmail: current.senderEmail || DEFAULT_SENDER_EMAIL,
+    giftMessage: current.giftMessage,
+    specialInstructions: current.specialInstructions,
     recipient: {
       ...profile.recipient,
       date: deliveryDate,
@@ -76,6 +82,7 @@ export function CheckoutDetailsFields({
   const [form, setForm] = useState<CheckoutDetailsInput>(() =>
     emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage)
   )
+  const [formError, setFormError] = useState('')
 
   const updateRecipient = (patch: Partial<Recipient>) => {
     setForm((prev) => ({ ...prev, recipient: { ...prev.recipient, ...patch } }))
@@ -99,7 +106,15 @@ export function CheckoutDetailsFields({
 
   const confirmSaved = () => {
     if (!matchedProfile) return
-    const payload = profileToForm(matchedProfile, savedDeliveryDate)
+    const payload = normalizeCheckoutDetails(profileToForm(matchedProfile, savedDeliveryDate, form))
+    const issues = validateCheckoutDetails(payload)
+    if (issues.length) {
+      setFormError(issues[0])
+      setForm(payload)
+      setStep('full-form')
+      return
+    }
+    setFormError('')
     if (variant === 'chat') {
       onSubmit(payload)
       return
@@ -118,13 +133,19 @@ export function CheckoutDetailsFields({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.senderName.trim()) return
-    const payload: CheckoutDetailsInput = {
+    const payload: CheckoutDetailsInput = normalizeCheckoutDetails({
       ...form,
       senderName: form.senderName.trim(),
       senderEmail: form.senderEmail.trim() || DEFAULT_SENDER_EMAIL,
       giftMessage: form.giftMessage?.trim() || undefined,
       specialInstructions: form.specialInstructions?.trim() || undefined,
+    })
+    const issues = validateCheckoutDetails(payload)
+    if (issues.length) {
+      setFormError(issues[0])
+      return
     }
+    setFormError('')
     saveProfile({
       recipient: payload.recipient,
       senderName: payload.senderName,
@@ -210,20 +231,6 @@ export function CheckoutDetailsFields({
               {p.recipient.address}, {p.recipient.city}
             </dd>
           </div>
-          <div>
-            <dt className="font-bold uppercase tracking-wide text-[var(--text-muted)]">
-              {messages.form.senderName}
-            </dt>
-            <dd className="text-[var(--text-primary)]">{p.senderName}</dd>
-          </div>
-          {p.giftMessage && (
-            <div>
-              <dt className="font-bold uppercase tracking-wide text-[var(--text-muted)]">
-                {messages.form.giftMessage}
-              </dt>
-              <dd className="italic text-[var(--text-primary)]">&ldquo;{p.giftMessage}&rdquo;</dd>
-            </div>
-          )}
         </dl>
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">
@@ -256,6 +263,11 @@ export function CheckoutDetailsFields({
             {messages.form.updateDetails}
           </button>
         </div>
+        {formError && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-200">
+            {formError}
+          </p>
+        )}
       </div>
     )
   }
@@ -377,6 +389,11 @@ export function CheckoutDetailsFields({
       >
         {processing ? messages.cart.processing : messages.cart.reviewOrder}
       </button>
+      {formError && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:bg-red-950/30 dark:text-red-200">
+          {formError}
+        </p>
+      )}
     </form>
   )
 }

@@ -6,7 +6,7 @@ import { useLanguage } from '@/providers/LanguageProvider'
 import { formatCurrency, formatLocaleDate } from '@/lib/i18n/format'
 import type { PlanBoard, CheckoutDetailsInput } from '@/types'
 import { CheckoutDetailsFields } from '@/components/cart/CheckoutDetailsFields'
-import { planToCheckoutDetails } from '@/lib/plan-checkout'
+import { planHasCompleteRecipient, planToCheckoutDetails } from '@/lib/plan-checkout'
 import {
   slipBody,
   slipBtnPrimary,
@@ -38,7 +38,7 @@ export function PlanBoardCard({ plan, onConfirm, processing = false }: Props) {
   const deliveryFee = plan.delivery_fee ?? plan.delivery?.fee ?? 0
   const total = plan.total ?? itemTotal + deliveryFee
 
-  const completeOnLoad = plan.needs_recipient === false
+  const completeOnLoad = plan.needs_recipient === false && planHasCompleteRecipient(plan)
   const [step, setStep] = useState<'form' | 'review'>(completeOnLoad ? 'review' : 'form')
   const [details, setDetails] = useState<CheckoutDetailsInput | null>(
     completeOnLoad ? planToCheckoutDetails(plan) : null

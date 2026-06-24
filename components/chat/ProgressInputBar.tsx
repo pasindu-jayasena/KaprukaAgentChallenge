@@ -62,14 +62,14 @@ export function ProgressInputBar({
                 type="button"
                 onClick={toggle}
                 aria-label="Voice input"
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 ${
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 sm:h-9 sm:w-9 ${
                   listening
                     ? 'bg-kapruka-header text-white shadow-md'
                     : 'text-[var(--text-muted)] hover:bg-[var(--rail-hover)] hover:text-[var(--text-primary)]'
                 }`}
                 style={{ animation: listening ? 'agentPulse 1.4s ease-in-out infinite' : undefined }}
               >
-                <Mic className="h-4 w-4" strokeWidth={1.9} />
+                <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={1.9} />
               </button>
             )}
             <button
@@ -77,9 +77,9 @@ export function ProgressInputBar({
               onClick={submit}
               disabled={loading || !value.trim()}
               aria-label="Send"
-              className="input-send-btn flex h-9 w-9 items-center justify-center rounded-full border-none transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed"
+              className="input-send-btn flex h-8 w-8 items-center justify-center rounded-full border-none transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed sm:h-9 sm:w-9"
             >
-              <ArrowUp className="h-[18px] w-[18px] text-kapruka-header" strokeWidth={2.4} />
+              <ArrowUp className="h-4 w-4 text-kapruka-header sm:h-[18px] sm:w-[18px]" strokeWidth={2.4} />
             </button>
           </div>
         </div>

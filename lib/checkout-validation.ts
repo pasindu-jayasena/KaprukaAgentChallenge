@@ -72,9 +72,6 @@ export function validateCheckoutDetails(details: CheckoutDetailsInput): string[]
   if (!d.recipient.name || isLikelyRecipientPlaceholder(d.recipient.name)) {
     issues.push('Recipient actual name is required, not a relationship like GF/wife/friend.')
   }
-  if (compactName(d.senderName) && compactName(d.senderName) === compactName(d.recipient.name)) {
-    issues.push('Sender name and recipient name must be checked separately.')
-  }
   if (phoneDigits.length < 9 || phoneDigits.length > 12) {
     issues.push('Recipient phone number looks invalid.')
   }

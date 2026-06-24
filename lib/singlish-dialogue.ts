@@ -47,7 +47,7 @@ function isShort(text: string, maxWords = 8) {
 }
 
 function hasShoppingSearchIntent(text: string) {
-  return /\b(show|find|search|browse|buy|order|checkout|cake|flower|gift|chocolate|hamper|teddy|watch|jewellery|perfume|under|budget)\b/i.test(
+  return /\b(show|find|search|browse|buy|order|checkout|cake|flower|flowers|gift|chocolate|hamper|teddy|watch|jewellery|perfume|under|budget|grocer(?:y|ies)|rice|milk|snack|phone|charger|electronics?|fashion|dress|home item|daily essentials?|mata ganna|ganna one|ganna ona|denna one|denna ona)\b/i.test(
     text
   )
 }
@@ -66,6 +66,18 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
     }
   }
 
+  const emotionalFlowerRequest =
+    /\b(duken|duka|sad|upset|tharaha|kopa|breakup|broke up|girlfriend|wife|sorry|sory|apology)\b/.test(text) &&
+    /\b(flowers?|gift|chocolate|note|denna one|denna ona|send)\b/.test(text)
+
+  if (emotionalFlowerRequest) {
+    return {
+      text:
+        'Ane, ehema ahala dukai. Apology ekak nam flowers ekka short note ekak dammoth better. Courier ekata wada oyata puluwan nam hand-deliver karana eka more human. Flower picks balamuda?',
+      chips: ['Show flower picks', 'Note eka liyamu', 'Keep it simple'],
+    }
+  }
+
   const asksHowAreYou =
     isShort(text) &&
     (/\b(kohomada|oyata kohomada|kohomada oyata|kohomada oyage)\b/.test(text) ||
@@ -74,8 +86,8 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
   if (asksHowAreYou) {
     return {
       text:
-        'Mama hodin, thank you! Oyata kohomada? Gift ekak hari cake ekak hari hoyanna help oneda?',
-      chips: ['Gift ekak', 'Cake ekak', 'Flowers', 'Just browsing'],
+        'Mama hodin, thank you! Oyata kohomada? Mokak hari ganna help oneda - gift ekakda, nathnam oyata ona deyakda?',
+      chips: ['Mata ganna one', 'Gift ekak', 'Groceries', 'Just browsing'],
     }
   }
 
@@ -86,8 +98,8 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
   if (asksCatalog && !hasShoppingSearchIntent(text.replace(/\b(gift|cake|flower)\b/g, ''))) {
     return {
       text:
-        'Kapruka eke cakes, flowers, chocolates, hampers, teddy bears, jewellery, watches, electronics wage godak tiyenawa. Special occasion ekakda? Nathnam gift eka katada kiyannako. Mama fit wenama pick karannam.',
-      chips: ['Birthday', 'Anniversary', 'For wife', 'For friend'],
+        'Kapruka eke godak dewal tiyenawa - groceries, electronics, fashion, cakes, flowers, chocolates, hampers. Oyata ganna oneda, nathnam gift ekakda? Mama fit wena tika pick karannam.',
+      chips: ['Mata ganna one', 'Gift ekak', 'Groceries', 'Electronics'],
     }
   }
 
@@ -98,11 +110,11 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
     /\bi'?m in sad mood\b/.test(text) ||
     /ඩුකෙන්|දුකෙන්|දුක|තනිය/.test(sinhala)
 
-  if (sadOrEmotional) {
+  if (sadOrEmotional && !hasShoppingSearchIntent(text)) {
     return {
       text:
         'Ane, ehema ahala dukai. Oya kamathi nam mokakda une kiyannako, mama ahagena innam. Gift hoyana eka passe balamuda.',
-      chips: ['Mata kiyanna one', 'Gift ekak balamu', 'Later'],
+      chips: ['Mata kiyanna one', 'Flowers balamu', 'Later'],
     }
   }
 
@@ -136,7 +148,152 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
   if (thanksOnly) {
     return {
       text: 'Hari, anytime! Mokak hari one nam kiyannako, mama help karannam.',
-      chips: ['Gift ekak', 'Cake ekak', 'Track order'],
+      chips: ['Mata ganna one', 'Gift ekak', 'Groceries', 'Track order'],
+    }
+  }
+
+  return null
+}
+
+
+function normalizeTanglish(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hasTanglishShoppingIntent(text: string) {
+  return /\b(show|find|search|browse|buy|order|checkout|cake|flower|flowers|gift|chocolate|hamper|watch|jewellery|perfume|budget|grocer(?:y|ies)|rice|milk|snack|phone|charger|electronics?|fashion|dress|home item|daily essentials?|venum|vaanga|anuppu|send|delivery)\b/i.test(text)
+}
+
+export function getTanglishDirectReply(input: string): SinglishDirectReply | null {
+  const text = normalizeTanglish(input)
+  if (!text) return null
+
+  const wantsEnglish = /\b(english|inglish)\s+(la|le|in|with)\b/.test(text)
+  if (wantsEnglish) {
+    return {
+      text: "Sure, I can reply in English. Tell me what happened, and I'll keep it simple. If you want to shop after that, I can help.",
+      chips: ['Tell you', 'Help me pick a gift', 'Later'],
+    }
+  }
+
+  const emotionalFlowerRequest =
+    /\b(sad|kashtam|dukham|upset|kovam|sandai|breakup|pirinju|sorry|apology|girlfriend|wife)\b/.test(text) &&
+    /\b(flowers?|gift|chocolate|note|send|anuppu|venum)\b/.test(text)
+
+  if (emotionalFlowerRequest) {
+    return {
+      text:
+        'Aiyo, adhu kashtam. Apology-na flowers plus short note romba better. Courier vida neenga hand-deliver panna more human-a feel aagum. Flower picks paakalama?',
+      chips: ['Flower picks', 'Note write pannalam', 'Simple-a podu'],
+    }
+  }
+
+  const asksHowAreYou =
+    isShort(text) && /\b(eppadi|epdi|how are you|nalla irukkingala|saptiya)\b/.test(text)
+
+  if (asksHowAreYou) {
+    return {
+      text:
+        'Naan nalla irukken, nandri! Ungalukku enna venum - unga shopping-a, illa gift-a?',
+      chips: ['Enakku vaanganum', 'Gift venum', 'Groceries', 'Just browsing'],
+    }
+  }
+
+  const asksCatalog =
+    /\b(enna|enna enna|edhu)\b/.test(text) &&
+    /\b(irukku|irukka|available|have)\b/.test(text)
+
+  if (asksCatalog && !hasTanglishShoppingIntent(text.replace(/\b(gift|cake|flower)\b/g, ''))) {
+    return {
+      text:
+        'Kapruka-la groceries, electronics, fashion, cakes, flowers, chocolates, hampers irukku. Ungalukku vaanganuma, illa gift-a? Naan best options pick pannuren.',
+      chips: ['Enakku vaanganum', 'Gift venum', 'Groceries', 'Electronics'],
+    }
+  }
+
+  const sadOrEmotional = /\b(sad|kashtam|dukham|upset|down|thani|lonely|kovam|sandai|breakup|pirinju)\b/.test(text)
+
+  if (sadOrEmotional && !hasTanglishShoppingIntent(text)) {
+    return {
+      text:
+        'Aiyo, adhu kashtam. Neenga comfortable-na enna aachu sollunga, naan ketkiren. Shopping later paathukkalam.',
+      chips: ['Solla venum', 'Flowers paakalam', 'Later'],
+    }
+  }
+
+  const asksUnderstanding =
+    /\b(puriyudha|purinjidha|understand|understood)\b/.test(text) ||
+    /\b(naan solradhu|enakku solla)\b/.test(text)
+
+  if (asksUnderstanding) {
+    return {
+      text:
+        'Aama, puriyudhu. Neenga Tanglish-la simple-a sollunga, naan adhe style-la reply pannuren.',
+      chips: ['Seri', 'Gift paakalam', 'English-la sollu'],
+    }
+  }
+
+  const thanksOnly = isShort(text, 6) && /\b(thank|thanks|nandri)\b/.test(text)
+  if (thanksOnly) {
+    return {
+      text: 'Anytime! Edhavadhu venumna sollunga, naan help pannuren.',
+      chips: ['Enakku vaanganum', 'Gift venum', 'Groceries', 'Track order'],
+    }
+  }
+
+  return null
+}
+
+
+export function getEnglishDirectReply(input: string): SinglishDirectReply | null {
+  const text = input.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+
+  if (/\bi want to plan a birthday\b|\bplan a birthday\b|\bbirthday planning\b/.test(text)) {
+    return {
+      text:
+        "Nice, let's make it feel personal. Who is the birthday for - kid, partner, parent, friend, or office person?",
+      chips: ['Kid', 'Partner', 'Parent', 'Friend', 'Office'],
+    }
+  }
+
+  if (/\bi want to shop for myself\b|\bshop for myself\b/.test(text)) {
+    return {
+      text:
+        'Sure. What are you buying today - groceries, electronics, fashion, home items, or something else?',
+      chips: ['Groceries', 'Electronics', 'Fashion', 'Home items'],
+    }
+  }
+
+  if (/\bi need help finding an item\b|\bfind an item\b|\bfind something\b/.test(text)) {
+    return {
+      text:
+        'Sure, I can narrow it down. What type of item are you looking for, and any budget or brand in mind?',
+      chips: ['Tell item type', 'Under Rs. 5000', 'Best quality', 'Fast delivery'],
+    }
+  }
+
+  if (/\bi need help with a sensitive situation\b|\bsensitive situation\b/.test(text)) {
+    return {
+      text:
+        'Okay, I will handle this carefully. What happened - apology, breakup, argument, or are you trying to cheer someone up?',
+      chips: ['Apology', 'Breakup', 'Argument', 'Cheer them up'],
+    }
+  }
+
+  const emotionalFlowerRequest =
+    /\b(broke up|breakup|fight|argued|sorry|apology|forgive|girlfriend|wife|heartbroken|upset)\b/.test(text) &&
+    /\b(flower|flowers|gift|chocolate|note|send)\b/.test(text)
+
+  if (emotionalFlowerRequest) {
+    return {
+      text:
+        "Aiyo, that hurts. If this is an apology, flowers plus a short note will land better than a cold courier. My suggestion: keep it classy, add a note card, and if you can, hand-deliver it. Shall I show flower picks or help write the note first?",
+      chips: ['Show flower picks', 'Write the note', 'Keep it simple'],
     }
   }
 

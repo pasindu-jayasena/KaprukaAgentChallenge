@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
 import { MessageCircle, Gift, Heart, PartyPopper, ShoppingBasket, Sparkles, Tag } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { ProgressInputBar } from '@/components/chat/ProgressInputBar'
@@ -41,9 +40,9 @@ export function HomeHero() {
   }
 
   const sectionTitle = {
-    en: 'Ask Anu — Your Shopping Assistant',
-    si: 'Anu ගෙන් අහන්න — ඔබේ සාප්පු සහායක',
-    ta: 'Anu கேளுங்கள் — உங்கள் ஷாப்பிங் உதவியாளர்',
+    en: 'Ask Anu - Your Shopping Assistant',
+    si: 'Anu gen ahanna - obe shopping sahayaka',
+    ta: 'Anu kitta kelunga - unga shopping helper',
   }
 
   const t = sectionTitle[uiLang as keyof typeof sectionTitle] ?? sectionTitle.en
@@ -69,22 +68,19 @@ export function HomeHero() {
       </div>
 
       {/* Floating Card Over Banner via negative margin */}
-      <div className="relative z-10 mx-auto w-full max-w-[800px] px-4 -mt-20 sm:-mt-24 lg:-mt-28 mb-8 sm:mb-12">
-        <motion.div
-          className="hero-panel bg-[var(--bg-surface-elevated)] shadow-2xl ring-1 ring-[var(--border-light)]"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.6, type: 'spring', stiffness: 80, damping: 20 }}
+      <div className="home-hero-wrap relative z-10 mx-auto mb-8 -mt-20 sm:-mt-24 sm:mb-12 lg:-mt-28">
+        <div
+          className="hero-panel min-w-0 overflow-hidden bg-[var(--bg-surface-elevated)] shadow-2xl ring-1 ring-[var(--border-light)]"
           style={{ borderRadius: '24px' }}
         >
-          <div className="mb-6 flex items-center justify-center gap-2.5 text-center">
-            <MessageCircle className="h-6 w-6 text-[var(--text-primary)]" />
-            <h2 className="font-display text-[22px] font-bold text-[var(--text-primary)] sm:text-2xl">
+          <div className="mb-5 flex min-w-0 flex-col items-center justify-center gap-2 text-center sm:mb-6 sm:flex-row sm:gap-2.5">
+            <MessageCircle className="h-5 w-5 shrink-0 text-[var(--text-primary)] sm:h-6 sm:w-6" />
+            <h2 className="min-w-0 text-balance font-display text-lg font-bold leading-tight text-[var(--text-primary)] sm:text-2xl">
               {t}
             </h2>
           </div>
 
-          <div className="mx-auto w-full max-w-[640px]">
+          <div className="home-input-wrap mx-auto w-full max-w-[640px]">
             <ProgressInputBar
               value={input}
               onChange={setInput}
@@ -95,7 +91,7 @@ export function HomeHero() {
             />
           </div>
 
-          <div className="mt-6 flex flex-wrap justify-center gap-2 sm:gap-3">
+          <div className="home-quick-actions mt-6 grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
             {chips.map((chip) => {
               const Icon = chip.icon
               return (
@@ -103,15 +99,15 @@ export function HomeHero() {
                   key={chip.key}
                   type="button"
                   onClick={() => goChat(chip.goal)}
-                  className="glass-chip flex items-center gap-2 rounded-full border border-[var(--border-medium)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--border-focus)] hover:bg-[var(--rail-hover)] shadow-sm transition-all"
+                  className="home-quick-chip glass-chip flex min-w-0 max-w-full items-center justify-center gap-1.5 rounded-full border border-[var(--border-medium)] bg-[var(--bg-surface)] px-2.5 py-2 text-xs font-semibold text-[var(--text-primary)] shadow-sm transition-all hover:border-[var(--border-focus)] hover:bg-[var(--rail-hover)] sm:gap-2 sm:px-4 sm:text-sm"
                 >
-                  <Icon className="h-[18px] w-[18px] text-[var(--text-primary)]" />
+                  <Icon className="h-4 w-4 shrink-0 text-[var(--text-primary)] sm:h-[18px] sm:w-[18px]" />
                   {chip.label}
                 </button>
               )
             })}
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   )

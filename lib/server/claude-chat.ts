@@ -26,7 +26,7 @@ function claudeToolDefs(): ToolDef[] {
       function: {
         name: 'kapruka_search_products',
         description:
-          'Search Kapruka catalog ONLY when the customer wants to browse or buy gifts. Do NOT use for advice questions, comparisons of already-shown items, or general chat.',
+          'Search Kapruka catalog ONLY when the customer wants to browse or buy products, including gifts, groceries, electronics, fashion, home items, and daily essentials. Do NOT use for advice questions, comparisons of already-shown items, or general chat.',
         parameters: {
           type: 'object',
           properties: {

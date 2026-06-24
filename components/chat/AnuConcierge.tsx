@@ -114,7 +114,7 @@ function AnuChatInner() {
       setSessionId(id)
       setChatMessages(session.messages)
       setJourneyStep(session.journeyStep ?? 0)
-      
+
       // Restore the cart state for this specific chat session to prevent "mixing" orders
       if (session.cartSnapshot?.length) {
         useCartStore.getState().restoreCart(session.cartSnapshot)
@@ -170,7 +170,7 @@ function AnuChatInner() {
 
   useEffect(() => {
     const paramSession = searchParams.get('session')
-    
+
     // If the URL caught up to what we just pushed, clear the pending lock
     if (paramSession === pendingSession.current) {
       pendingSession.current = null
@@ -412,7 +412,7 @@ function AnuChatInner() {
       const checkoutMsg: ChatMessage = {
         role: 'assistant',
         content:
-          'Your order is ready for payment. Thank you for choosing Kapruka — tap the payment link below to complete it.',
+          'Done - your order is ready for payment. Thank you for choosing Kapruka. Complete the payment link below, and come again anytime; I will help faster next time.',
         payload: {
           type: 'checkout',
           orderResult: ctx.orderResult,
@@ -653,7 +653,7 @@ function AnuChatInner() {
       <div className="chat-layout mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden">
         {/* Messages */}
         <div className="chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 sm:px-4 sm:py-5">
-          <WelcomeGuide />
+          <WelcomeGuide onPick={sendMessage} />
           {chatMessages.map((msg, i) => {
             const isLastStreaming = msg.isStreaming && i === chatMessages.length - 1
             if (isLastStreaming && isStreaming && !msg.content) {

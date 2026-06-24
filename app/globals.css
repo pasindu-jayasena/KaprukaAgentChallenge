@@ -504,14 +504,15 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
 .kap-categories {
   background: var(--bg-surface);
   padding: 2rem 1rem;
+  overflow-x: hidden;
   transition: background 0.3s ease;
 }
 .kap-categories-grid {
   max-width: 1200px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 1rem;
   justify-items: center;
 }
 @media (min-width: 640px) {
@@ -951,12 +952,51 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
 /* ═══════════════════════════════════════════════
    HERO PANEL (used on home for chat-entry card)
    ═══════════════════════════════════════════════ */
+
+.home-hero-wrap {
+  width: min(800px, calc(100vw - 2.5rem));
+}
+
+.home-quick-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .home-hero-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .home-hero-wrap .hero-panel {
+    border-radius: 0 0 22px 22px !important;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .home-input-wrap,
+  .home-quick-actions {
+    width: min(100%, calc(100vw - 3rem));
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .home-quick-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-quick-chip {
+    width: 100%;
+  }
+}
+
 .hero-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: 20px;
   box-shadow: var(--shadow-lg);
-  padding: clamp(1.5rem, 4vw, 2.5rem);
+  padding: clamp(1rem, 3vw, 2.5rem);
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 

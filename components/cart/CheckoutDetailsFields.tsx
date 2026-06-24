@@ -40,14 +40,14 @@ function profileToForm(
 }
 
 function emptyForm(
-  latest: SavedCheckoutProfile | undefined,
   initialSenderName: string,
   initialGiftMessage: string,
-  recipientName = ''
+  recipientName = '',
+  initialSenderEmail = DEFAULT_SENDER_EMAIL
 ): CheckoutDetailsInput {
   return {
-    senderName: latest?.senderName || initialSenderName,
-    senderEmail: latest?.senderEmail || DEFAULT_SENDER_EMAIL,
+    senderName: initialSenderName,
+    senderEmail: initialSenderEmail || DEFAULT_SENDER_EMAIL,
     giftMessage: initialGiftMessage || undefined,
     specialInstructions: undefined,
     recipient: {
@@ -71,7 +71,6 @@ export function CheckoutDetailsFields({
   const profiles = useRecipientStore((s) => s.profiles)
   const saveProfile = useRecipientStore((s) => s.saveProfile)
   const findByRecipientName = useRecipientStore((s) => s.findByRecipientName)
-  const getLatestProfile = useRecipientStore((s) => s.getLatestProfile)
 
   const [step, setStep] = useState<Step>(profiles.length > 0 ? 'recipient-name' : 'full-form')
   const [recipientNameInput, setRecipientNameInput] = useState('')
@@ -80,7 +79,7 @@ export function CheckoutDetailsFields({
     () => new Date().toISOString().slice(0, 10)
   )
   const [form, setForm] = useState<CheckoutDetailsInput>(() =>
-    emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage)
+    emptyForm(initialSenderName, initialGiftMessage)
   )
   const [formError, setFormError] = useState('')
 
@@ -99,7 +98,7 @@ export function CheckoutDetailsFields({
       setSavedDeliveryDate(new Date().toISOString().slice(0, 10))
       setStep('confirm-saved')
     } else {
-      setForm(emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage, name))
+      setForm(emptyForm(form.senderName || initialSenderName, initialGiftMessage, name, form.senderEmail))
       setStep('full-form')
     }
   }
@@ -125,7 +124,7 @@ export function CheckoutDetailsFields({
 
   const rejectSaved = () => {
     const name = matchedProfile?.recipient.name || recipientNameInput.trim()
-    setForm(emptyForm(getLatestProfile(), initialSenderName, initialGiftMessage, name))
+    setForm(emptyForm(form.senderName || initialSenderName, initialGiftMessage, name, form.senderEmail))
     setMatchedProfile(null)
     setStep('full-form')
   }

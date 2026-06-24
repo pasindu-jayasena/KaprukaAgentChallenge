@@ -1,6 +1,7 @@
 'use client'
 
 import { AnuLogoMark } from '@/components/shell/AnuLogoMark'
+import { Check } from 'lucide-react'
 import type { StatusEvent } from '@/types'
 
 interface Props {
@@ -8,7 +9,7 @@ interface Props {
   fallback?: string
 }
 
-export function FlowThinking({ events, fallback = 'Anu is on it...' }: Props) {
+export function FlowThinking({ events, fallback = 'Anu is thinking through it...' }: Props) {
   const hasReal = events.length > 0
 
   return (
@@ -17,7 +18,7 @@ export function FlowThinking({ events, fallback = 'Anu is on it...' }: Props) {
       <div className="glass-card min-w-[240px] max-w-full rounded-[20px] p-4 sm:p-5">
         <div className="mb-3 flex items-center gap-2">
           <p className="font-display text-[15px] font-semibold text-kapruka-header dark:text-[var(--text-primary)]">
-            {hasReal ? fallback : 'Anu is thinking'}
+            {hasReal ? fallback : 'Anu is thinking through it'}
           </p>
           {!hasReal && (
             <span className="flex items-center gap-1" aria-hidden>
@@ -53,7 +54,7 @@ export function FlowThinking({ events, fallback = 'Anu is on it...' }: Props) {
                       animation: isLast ? 'agentPulse 1.6s ease-in-out infinite' : undefined,
                     }}
                   >
-                    {!isLast && '✓'}
+                    {!isLast && <Check className="h-3 w-3" strokeWidth={2.4} />}
                   </span>
                   {ev.label}
                 </li>

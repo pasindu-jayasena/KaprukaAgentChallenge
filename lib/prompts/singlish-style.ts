@@ -98,6 +98,7 @@ export function polishSinglishText(text: string): string {
     .replace(/\bekama widihata gifts\b/gi, 'gifts godak')
     .replace(/\bapi customers ta gift dena company ekak[.!]?\s*/gi, '')
     .replace(/\bMamata?\s+Anu,\s*/gi, 'Mama Anu, ')
+    .replace(/\bFlowers dukenekda\?\s*Shape!\s*/gi, 'Ane, ehema ahala dukai. Flowers ekka short note ekak dammoth better. ')
 }
 
 /** Fix impolite or awkward Tanglish in model output. */

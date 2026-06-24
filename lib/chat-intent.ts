@@ -13,6 +13,7 @@ const NON_SHOPPING_PATTERNS: RegExp[] = [
   /\b(like|love)\s+(this|me)\b/i,
   /\byalu\s+(kar|karan|wenna|ganna)\b/i,
   /\b(girlfriend|boyfriend|relationship)\b/i,
+  /\b(broke\s+up|breakup|break\s+up|fight|argued|heartbroken)\b/i,
   /\bhow\s+(to|do\s+i)\s+(make|get|become|win)\b.*\b(friend|girl|boy|love|kella|yalu)\b/i,
   /\b(tharaha|kopa|upset|angry|forgive|sory|sorry)\b/i,
   /\bwhat\s+do\s+you\s+think\b/i,
@@ -30,12 +31,13 @@ const SHOPPING_PATTERNS: RegExp[] = [
   /\b(under|below|around|budget)\s+[\d,]+/i,
   /\b(birthday|anniversary|wedding|valentine)\s+(cake|gift|flower|hamper|present)\b/i,
   /\b(cake|flower|chocolate|hamper|teddy|perfume|fruit\s+basket|gift\s+box|balloon)s?\b/i,
+  /\b(grocer(?:y|ies)|rice|milk|snacks?|electronics?|phone|charger|cable|dress|clothing|fashion|home\s+items?|daily\s+essentials?|fruits?|vegetables?)\b/i,
   /\boptions?\s+(for|under)\b/i,
   /\balternatives?\b/i,
 ]
 
 const PRODUCT_NOUN =
-  /\b(cake|flower|chocolate|hamper|teddy|perfume|gift|balloon|ribbon|fruit|wine|watch|jewell?ery)\b/i
+  /\b(cake|flower|chocolate|hamper|teddy|perfume|gift|balloon|ribbon|fruit|wine|watch|jewell?ery|grocer(?:y|ies)|rice|milk|snack|electronics?|phone|charger|cable|dress|clothing|fashion|home\s+item|daily\s+essential|vegetable|appliance)\b/i
 
 function recentAssistantLines(messages: ChatTurn[], count = 4): string[] {
   return messages
@@ -59,14 +61,17 @@ export function isNonShoppingTurn(userMessage: string, messages: ChatTurn[]): bo
   const msg = userMessage.trim()
   if (!msg || msg.includes('CHECKOUT_DETAILS:')) return false
 
-  if (NON_SHOPPING_PATTERNS.some((p) => p.test(msg))) return true
+  const shoppingVerb = SHOPPING_PATTERNS.some((p) => p.test(msg))
+  const productMention = PRODUCT_NOUN.test(msg)
+  if (NON_SHOPPING_PATTERNS.some((p) => p.test(msg)) && !(shoppingVerb && productMention)) {
+    return true
+  }
 
   const lifeTopic =
     /\b(yalu|friend|girlfriend|boyfriend|kamathi|love|relationship|upset|angry|forgive|kohomada|kella)\b/i.test(
       msg
     )
-  const shoppingVerb = SHOPPING_PATTERNS.some((p) => p.test(msg))
-  if (lifeTopic && !PRODUCT_NOUN.test(msg) && !shoppingVerb) return true
+  if (lifeTopic && !productMention && !shoppingVerb) return true
 
   if (productsRecentlyShown(messages)) {
     const followUp =
@@ -106,7 +111,7 @@ export function buildIntentBlock(messages: ChatTurn[]): string {
   if (isExplicitShoppingIntent(lastUser.content)) {
     return [
       '═══ THIS TURN — SHOPPING OK ═══',
-      'Customer wants product options. You may search once, then show ONE <PRODUCT_TRIO>.',
+      'Customer wants product options or buying help. You may search once, then show ONE <PRODUCT_TRIO>.',
       'Write your advice in plain text BEFORE the tag — never put your full answer only inside context.',
     ].join('\n')
   }

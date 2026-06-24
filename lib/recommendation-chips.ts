@@ -13,15 +13,15 @@ const AFTER_ADD: Record<UiLang, string[]> = {
 }
 
 const AFTER_CHECKOUT: Record<UiLang, string[]> = {
-  en: ['Track my order', 'Send another gift', 'Browse deals'],
-  si: ['Track my order', 'Another gift', 'Deals balanna'],
-  ta: ['Track my order', 'Another gift', 'Deals paarunga'],
+  en: ['Shop again', 'Track my order', 'Weekly groceries', 'Send another gift'],
+  si: ['Ayeth shop karamu', 'Track my order', 'Groceries', 'Another gift'],
+  ta: ['Innum shop pannalam', 'Track my order', 'Groceries', 'Another gift'],
 }
 
 const BUDGET: Record<UiLang, string[]> = {
-  en: ['Under Rs. 5000', 'Rs. 5000–10000', 'Rs. 10000–20000', 'No budget limit'],
-  si: ['Under Rs. 5000', 'Rs. 5000–10000', 'Rs. 10000–20000', 'Budget naha'],
-  ta: ['Under Rs. 5000', 'Rs. 5000–10000', 'Rs. 10000–20000', 'Budget illa'],
+  en: ['Under Rs. 5000', 'Rs. 5000-10000', 'Rs. 10000-20000', 'No budget limit'],
+  si: ['Under Rs. 5000', 'Rs. 5000-10000', 'Rs. 10000-20000', 'Budget naha'],
+  ta: ['Under Rs. 5000', 'Rs. 5000-10000', 'Rs. 10000-20000', 'Budget illa'],
 }
 
 const RECIPIENT: Record<UiLang, string[]> = {
@@ -70,10 +70,10 @@ export function mergeChips(primary: string[] | undefined, fallback: string[] | n
 
 export function addToCartFollowUp(productName: string, uiLang: UiLang): string {
   if (uiLang === 'si') {
-    return `${productName} cart eke! Wena deyak add karannada, nathnam checkout karannada? 🛒`
+    return `${productName} cart eke. Wena deyak add karannada, nathnam checkout karannada?`
   }
   if (uiLang === 'ta') {
-    return `${productName} cart-la add panniten! Vera edhavadhu add pannalama, illa checkout pannalama? 🛒`
+    return `${productName} cart-la add panniten. Vera edhavadhu add pannalama, illa checkout pannalama?`
   }
-  return `Added ${productName} to your cart! Want to add anything else or checkout now? 🛒`
+  return `Added ${productName} to your cart. Want to add anything else or checkout now?`
 }

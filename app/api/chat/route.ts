@@ -12,7 +12,7 @@ import { messagesForModel } from '@/lib/conversation-context'
 import { isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
-import { getSinglishDirectReply } from '@/lib/singlish-dialogue'
+import { getEnglishDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
 import {
   checkoutDetailsAreValid,
   forcePlanToCollectDetails,
@@ -290,11 +290,16 @@ export async function POST(req: Request) {
           )
 
         if (
-          (chatLang === 'singlish' || explicitEnglishRequest) &&
+          (chatLang === 'singlish' || chatLang === 'tanglish' || explicitEnglishRequest || chatLang === 'en') &&
           lastUserMessage &&
           !checkoutDetails
         ) {
-          const directReply = getSinglishDirectReply(lastUserMessage.content)
+          const directReply =
+            chatLang === 'tanglish'
+              ? getTanglishDirectReply(lastUserMessage.content)
+              : chatLang === 'singlish' || explicitEnglishRequest
+              ? getSinglishDirectReply(lastUserMessage.content)
+              : getEnglishDirectReply(lastUserMessage.content)
           if (directReply) {
             emit({
               type: 'final',

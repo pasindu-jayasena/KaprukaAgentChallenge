@@ -71,7 +71,7 @@ function estimateTotal(products: Product[]) {
   return products.reduce((sum, product) => sum + (product.price || 0), 0)
 }
 
-function toProducts(results: SearchProduct[], mode: 'flowers' | 'basket' | 'note'): Product[] {
+function toProducts(results: SearchProduct[], mode: 'flowers' | 'basket' | 'note' | 'gift'): Product[] {
   const seen = new Set<string>()
   return results
     .filter((p) => p.id && p.name && p.in_stock !== false)
@@ -97,6 +97,10 @@ function toProducts(results: SearchProduct[], mode: 'flowers' | 'basket' | 'note
             ? index === 0
               ? 'Add this so the gesture has words, not just flowers.'
               : 'Simple add-on that makes the message feel intentional.'
+            : mode === 'gift'
+            ? index === 0
+              ? 'Sweet gift-style pick, not a random snack.'
+              : 'Good option when you want it to feel like a proper gift.'
             : index === 0
             ? 'Start the basket with this practical essential.'
             : 'Useful add-on for an everyday order.',
@@ -143,6 +147,34 @@ function noteWriterCopy(chatLang: ChatLang) {
   return 'I would keep the note short and pressure-free: "I know things are not okay right now. I am sorry for hurting you. No pressure to reply - I just wanted you to know I still care." That feels warmer than a long explanation.'
 }
 
+function romanticGiftCopy(chatLang: ChatLang, chocolate: boolean) {
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    return chocolate
+      ? 'Hari, eyata denna chocolate gift ekak nam sweet and safe choice. Biscuit/snack wage random dewal nemei - gift widihata denna puluwan chocolate options tika me. Thawa romantic karanna one nam flowers hari note card ekak add karamu.'
+      : 'Hari, eyata denna gift ekak nam over karanna epa - classy, simple, thoughtful widihata yamu. Mama random dewal nemei, gift widihata denna puluwan options tika pennannam. Budget ekak thiyenawanam kiyanna, mama thawa tight karannam.'
+  }
+  if (chatLang === 'tanglish') {
+    return chocolate
+      ? 'Seri, girlfriend-ku chocolate gift sweet and safe choice. Random snack madhiri illa - gift-a kudukka suitable chocolate options idhu. More romantic venumna flowers illa note card add pannalam.'
+      : 'Seri, girlfriend-ku gift-na classy and thoughtful-a poduvom. Random items illa, proper gift options kaamikiren. Budget irundha sollunga, naan tighter-a pick pannuren.'
+  }
+  return chocolate
+    ? "Good call. Chocolate for your girlfriend should feel like a gift, not random snacks, so I picked gift-style chocolate options. Add flowers or a small note if you want it to feel more romantic."
+    : "Sweet. For your girlfriend, I would keep it classy and thoughtful instead of random. I picked gift-style options; tell me the budget if you want me to tighten it."
+}
+
+function isRomanticGiftRequest(text: string) {
+  const t = normalize(text)
+  const recipient = /\b(girlfriend|gf|wife|partner|crush|kella|kellawa|girl|eyata|eyage|eya|she|her)\b/.test(t)
+  const product = /\b(chocolates?|gift|hamper|teddy|perfume|flowers?|rose|note|watch|jewell?ery)\b/.test(t)
+  const intent = /\b(want|need|looking for|send|buy|gift|denna|one|ona|oni|yavanna|karaganna|yaluw|yalu)\b/.test(t)
+  return recipient && product && intent
+}
+
+function wantsChocolateGift(text: string) {
+  return /\b(chocolates?|choco|cadbury|ferrero)\b/.test(normalize(text))
+}
+
 function isNoteCardRequest(text: string) {
   const t = normalize(text)
   return /\b(add|show|find|need|want)\b.*\b(note card|card|greeting card|sorry card|apology card)\b/.test(t) || /\b(note card|greeting card|sorry card|apology card)\b.*\b(add|show|find|need|want)\b/.test(t)
@@ -155,7 +187,12 @@ function isNoteWritingRequest(text: string) {
 
 function isSnackRequest(text: string) {
   const t = normalize(text)
-  return /\b(snacks?|biscuits?|chocolate|tea time|add more groceries)\b/.test(t)
+  if (isRomanticGiftRequest(text)) return false
+  const explicitSnack = /\b(snacks?|biscuits?|tea time|add more groceries)\b/.test(t)
+  const plainChocolateBasket =
+    /\b(chocolates?|choco)\b/.test(t) &&
+    !/\b(gift|girlfriend|gf|wife|partner|crush|kella|kellawa|girl|she|her|eyata|eyage|birthday|anniversary|romantic|love)\b/.test(t)
+  return explicitSnack || plainChocolateBasket
 }
 
 function isBudgetTightenRequest(text: string) {
@@ -208,6 +245,32 @@ export async function runAgenticShoppingShortcut(opts: {
   emitStatus: StatusEmitter
 }): Promise<ChatPayload | null> {
   const { text, chatLang, mcp, emitStatus } = opts
+
+  if (isRomanticGiftRequest(text)) {
+    const budget = parseBudget(text)
+    const chocolate = wantsChocolateGift(text)
+    emitStatus('agent_concierge', { label: chocolate ? 'Picking proper chocolate gifts' : 'Picking a thoughtful gift' })
+    const query = chocolate ? 'chocolate gift for her cadbury ferrero' : 'gift for her chocolate teddy rose perfume'
+    const results = await searchProducts(mcp, query, budget, emitStatus)
+    const backupResults = chocolate ? await searchProducts(mcp, 'cadbury ferrero chocolate gift', budget, emitStatus) : []
+    const combined = [...results, ...backupResults]
+    const unsuitableGift = /\b(snackers?|biscuits?|chips?|short\s?cake|savoury|cheese|chillie|for\s+men|men['’]?s|mens|male|husband|father|dad)\b/i
+    const filtered = combined.filter((p) => {
+      const haystack = String(p.name ?? '') + ' ' + String(p.summary ?? '')
+      if (unsuitableGift.test(haystack)) return false
+      if (chocolate) return /\b(chocolate|choco|cadbury|ferrero)\b/i.test(haystack)
+      return /\b(chocolate|choco|cadbury|ferrero|hamper|gift|for\s+her|love|heart|rose|flowers?|teddy|perfume)\b/i.test(haystack)
+    })
+    const giftSafeResults = combined.filter((p) => !unsuitableGift.test(String(p.name ?? '') + ' ' + String(p.summary ?? '')))
+    const products = toProducts(filtered.length ? filtered : giftSafeResults, 'gift')
+    if (!products.length) return null
+    return {
+      type: 'product_trio',
+      rawText: romanticGiftCopy(chatLang, chocolate),
+      trio: { context: chocolate ? 'Chocolate gifts for her' : 'Gift picks for her', products },
+      chips: chocolate ? ['Add flowers', 'Add note card', 'Under Rs. 5000'] : ['Show chocolates', 'Add flowers', 'Under Rs. 5000'],
+    }
+  }
 
   if (isNoteCardRequest(text)) {
     emitStatus('agent_concierge', { label: 'Adding words to the gesture' })

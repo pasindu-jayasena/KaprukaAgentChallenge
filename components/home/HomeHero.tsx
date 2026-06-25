@@ -41,8 +41,8 @@ export function HomeHero() {
 
   const sectionTitle = {
     en: 'Ask Anu - Your Shopping Assistant',
-    si: 'Anu gen ahanna - obe shopping sahayaka',
-    ta: 'Anu kitta kelunga - unga shopping helper',
+    si: '\u0d85\u0db1\u0dd4\u0d9c\u0dd9\u0db1\u0dca \u0d85\u0dc4\u0db1\u0dca\u0db1 - \u0d94\u0db6\u0dda \u0dc3\u0dcf\u0db4\u0dca\u0db4\u0dd4 \u0dc3\u0dc4\u0dcf\u0dba\u0d9a',
+    ta: '\u0b85\u0ba9\u0bc1\u0bb5\u0bbf\u0b9f\u0bae\u0bcd \u0b95\u0bc7\u0bb3\u0bc1\u0b99\u0bcd\u0b95\u0bb3\u0bcd - \u0b89\u0b99\u0bcd\u0b95\u0bb3\u0bcd \u0bb7\u0bbe\u0baa\u0bcd\u0baa\u0bbf\u0b99\u0bcd \u0b89\u0ba4\u0bb5\u0bbf\u0baf\u0bbe\u0bb3\u0bb0\u0bcd',
   }
 
   const t = sectionTitle[uiLang as keyof typeof sectionTitle] ?? sectionTitle.en

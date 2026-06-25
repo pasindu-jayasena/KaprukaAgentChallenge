@@ -40,7 +40,7 @@ const si = {
     title: 'Anu · Kapruka concierge',
     openingHeadline: 'අද Anu ඔබ වෙනුවෙන් මොනවද කරන්නේ?',
     openingSub: 'Kapruka එකේ හොඳම දේට ඔබේ මාර්ගය.',
-    openingPlaceholder: 'e.g., "Gift ekak, groceries, nathnam item ekak - budget Rs. 15000"',
+    openingPlaceholder: 'e.g., "Gift, groceries, electronics..."',
     headline: 'අද මම ඔබට මොනවද හොයා දෙන්නේ?',
     subhead: 'Groceries, gifts, electronics, fashion - mokakda one kiyanna.',
     placeholder: 'අහන්න, වෙනස් කරන්න, හෝ මොකද වුණේ කියන්න…',

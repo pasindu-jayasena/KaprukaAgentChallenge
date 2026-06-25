@@ -249,6 +249,45 @@ export function getTanglishDirectReply(input: string): SinglishDirectReply | nul
 }
 
 
+export function getSinhalaDirectReply(input: string): SinglishDirectReply | null {
+  const text = input.toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+
+  const hasSinhala = Array.from(text).some((ch) => {
+    const code = ch.charCodeAt(0)
+    return code >= 0x0d80 && code <= 0x0dff
+  })
+  const hasCodes = (...codes: number[]) => codes.every((code) => text.includes(String.fromCharCode(code)))
+
+  const asksHowAreYou = hasSinhala && hasCodes(0x0d9a, 0x0ddc, 0x0dc4, 0x0db8, 0x0daf)
+  if (asksHowAreYou) {
+    return {
+      text: '\u0DB8\u0DB8 \u0DC4\u0DDC\u0DB3\u0DD2\u0DB1\u0DCA, \u0DC3\u0DCA\u0DAD\u0DD6\u0DAD\u0DD2\u0DBA\u0DD2! \u0D94\u0DBA\u0DCF\u0DA7 \u0D9A\u0DDC\u0DC4\u0DDC\u0DB8\u0DAF? \u0D85\u0DAF \u0D94\u0DBA\u0DCF\u0DA7 \u0D9C\u0DB1\u0DCA\u0DB1 \u0DAF\u0DD9\u0DBA\u0D9A\u0DCA\u0DAF, \u0DB1\u0DD0\u0DAD\u0DCA\u0DB1\u0DB8\u0DCA \u0D9A\u0DCF\u0DA7\u0DC4\u0DBB\u0DD2 gift \u0D91\u0D9A\u0D9A\u0DCA\u0DAF?',
+      chips: ['\u0DB8\u0DA7 \u0D9C\u0DB1\u0DCA\u0DB1 \u0D95\u0DB1\u0DDA', 'Gift \u0D91\u0D9A\u0D9A\u0DCA', 'Groceries', '\u0DB6\u0DBD\u0DB1\u0DCA\u0DB1 \u0DC0\u0DD2\u0DAD\u0DBB\u0DBA\u0DD2'],
+    }
+  }
+
+  const sadOnly = hasSinhala && hasCodes(0x0daf, 0x0dd4, 0x0d9a) &&
+    !/flowers?|gift|order/.test(text)
+  if (sadOnly) {
+    return {
+      text: '\u0D85\u0DBA\u0DD2\u0DBA\u0DDD, \u0D92\u0D9A \u0D85\u0DC4\u0DBD\u0DCF \u0DAF\u0DD4\u0D9A\u0DBA\u0DD2. \u0D94\u0DBA\u0DCF \u0D9A\u0DD0\u0DB8\u0DAD\u0DD2 \u0DB1\u0DB8\u0DCA \u0DB8\u0DDC\u0D9A\u0DAF \u0DC0\u0DD4\u0DAB\u0DDA \u0D9A\u0DD2\u0DBA\u0DB1\u0DCA\u0DB1, \u0DB8\u0DB8 \u0D85\u0DC4\u0D9C\u0DD9\u0DB1 \u0D89\u0DB1\u0DCA\u0DB1\u0DB8\u0DCA. Shopping \u0D91\u0D9A \u0DB4\u0DC3\u0DCA\u0DC3\u0DDA \u0DB6\u0DBD\u0DB8\u0DD4.',
+      chips: ['\u0DB8\u0DA7 \u0D9A\u0DD2\u0DBA\u0DB1\u0DCA\u0DB1 \u0D95\u0DB1\u0DDA', 'Flowers \u0DB6\u0DBD\u0DB8\u0DD4', '\u0DB4\u0DC3\u0DCA\u0DC3\u0DDA'],
+    }
+  }
+
+  const asksCatalog = hasSinhala && (hasCodes(0x0db8, 0x0ddc, 0x0db1) || hasCodes(0x0dad, 0x0dd2, 0x0dba, 0x0dd9, 0x0db1))
+  if (asksCatalog) {
+    return {
+      text: 'Kapruka \u0D91\u0D9A\u0DDA groceries, electronics, fashion, cakes, flowers, chocolates, hampers \u0DC0\u0D9C\u0DDA \u0D9C\u0DDC\u0DA9\u0D9A\u0DCA \u0DAF\u0DDA\u0DC0\u0DBD\u0DCA \u0DAD\u0DD2\u0DBA\u0DD9\u0DB1\u0DC0\u0DCF. \u0D94\u0DBA\u0DCF\u0DA7 \u0D9C\u0DB1\u0DCA\u0DB1\u0DAF, \u0DB1\u0DD0\u0DAD\u0DCA\u0DB1\u0DB8\u0DCA gift \u0D91\u0D9A\u0D9A\u0DCA\u0DAF?',
+      chips: ['\u0DB8\u0DA7 \u0D9C\u0DB1\u0DCA\u0DB1 \u0D95\u0DB1\u0DDA', 'Gift \u0D91\u0D9A\u0D9A\u0DCA', 'Groceries', 'Electronics'],
+    }
+  }
+
+  return null
+}
+
+
 export function getEnglishDirectReply(input: string): SinglishDirectReply | null {
   const text = input.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim()
   if (!text) return null

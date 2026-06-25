@@ -1026,13 +1026,71 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
 }
 
 
-/* Home mobile input polish */
+/* Mobile input and touch-state fixes */
 @media (max-width: 640px) {
-  .home-input-wrap .input-actions button[aria-label='Voice input'] {
-    display: none;
+  .home-input-wrap .progress-input-inner {
+    gap: 0.25rem;
+    padding-left: 0.875rem;
   }
 
-  .home-input-wrap .progress-input-inner {
-    padding-left: 0.875rem;
+  .home-input-wrap .progress-input-inner input {
+    min-width: 0;
+    flex: 1 1 0;
+    font-size: 0.9375rem;
+  }
+
+  .home-input-wrap .input-actions {
+    display: flex !important;
+    flex: 0 0 auto;
+    gap: 0.125rem;
+    margin-left: 0.125rem;
+  }
+
+  .home-input-wrap .input-actions button[aria-label='Voice input'] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 2rem;
+    color: var(--text-muted);
+    background: transparent;
+  }
+
+  .home-input-wrap .input-actions button[aria-label='Send'] {
+    flex: 0 0 2rem;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .glass-chip:hover,
+  .home-quick-chip:hover {
+    transform: none;
+    box-shadow: var(--shadow-sm);
+    border-color: var(--border-light);
+    background: var(--bg-surface);
+  }
+
+  .home-quick-chip:hover,
+  .home-quick-chip:hover svg {
+    color: var(--text-primary);
+  }
+
+  .input-send-btn:hover:not(:disabled) {
+    background: #FCE22A;
+    box-shadow: 0 2px 8px rgba(252, 226, 42, 0.3);
+  }
+
+  .kap-nav-icon:hover,
+  .rail-icon-btn:hover,
+  .rail-nav-item:hover,
+  .session-row:hover {
+    background: transparent;
+  }
+
+  .kap-lang-btn:hover {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .kap-lang-btn--active:hover {
+    color: #401F60;
   }
 }

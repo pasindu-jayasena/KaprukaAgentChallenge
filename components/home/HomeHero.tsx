@@ -50,7 +50,7 @@ export function HomeHero() {
   return (
     <section className="relative w-full">
       {/* Background Banner Container */}
-      <div className="w-full relative overflow-hidden h-[160px] sm:h-[180px] lg:h-[200px]">
+      <div className="home-hero-banner w-full relative overflow-hidden h-[160px] sm:h-[180px] lg:h-[200px]">
         {/* Background Image */}
         <div
           className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"

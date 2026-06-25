@@ -10,8 +10,8 @@ import type { UiLang } from '@/types'
 
 const LANGS: { code: UiLang; label: string }[] = [
   { code: 'en', label: 'EN' },
-  { code: 'si', label: 'සිං' },
-  { code: 'ta', label: 'தமி' },
+  { code: 'si', label: '\u0dc3\u0dd2\u0d82' },
+  { code: 'ta', label: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd' },
 ]
 
 interface Props {

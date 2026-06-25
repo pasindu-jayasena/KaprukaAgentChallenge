@@ -299,6 +299,7 @@ export async function POST(req: Request) {
             text: lastUserMessage.content,
             chatLang,
             mcp,
+            messages,
             emitStatus: (name, args = {}) => emit({ type: 'status', ...statusLabel(name, args) }),
           })
 

@@ -38,7 +38,7 @@ const en = {
     title: 'Anu - Kapruka shopping assistant',
     openingHeadline: 'What would you like Anu to handle today?',
     openingSub: 'Your way to the perfect find on Kapruka.',
-    openingPlaceholder: 'e.g., "How to surprise my wife on her birthday?"',
+    openingPlaceholder: 'How to surprise my wife on her birthday?',
     headline: 'What can I help you find today?',
     subhead: 'Groceries, gifts, electronics, fashion - tell me what you need.',
     placeholder: 'Ask, refine, or tell me what changed…',

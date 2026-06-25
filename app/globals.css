@@ -1017,3 +1017,15 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   }
   .ambient-dot { display: none; }
 }
+
+
+/* Home mobile input polish */
+@media (max-width: 640px) {
+  .home-input-wrap .input-actions button[aria-label='Voice input'] {
+    display: none;
+  }
+
+  .home-input-wrap .progress-input-inner {
+    padding-left: 0.875rem;
+  }
+}

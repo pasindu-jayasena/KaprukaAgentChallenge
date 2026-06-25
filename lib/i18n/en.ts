@@ -38,7 +38,7 @@ const en = {
     title: 'Anu - Kapruka shopping assistant',
     openingHeadline: 'What would you like Anu to handle today?',
     openingSub: 'Your way to the perfect find on Kapruka.',
-    openingPlaceholder: 'e.g., "Gift, groceries, electronics..."',
+    openingPlaceholder: 'e.g., "How to surprise my wife on her birthday?"',
     headline: 'What can I help you find today?',
     subhead: 'Groceries, gifts, electronics, fashion - tell me what you need.',
     placeholder: 'Ask, refine, or tell me what changed…',
@@ -131,7 +131,7 @@ const en = {
   home: {
     whyTitle: 'Why shop with Anu?',
     whyItems: [
-      { title: 'Understands you', desc: 'Natural language in English, Sinhala, Tamil, Tanglish, or Singlish' },
+      { title: 'Understands you', desc: 'Natural language in English, Sinhala, or Tamil' },
       { title: 'Finds the best', desc: 'Curated picks from Kapruka\'s full catalog' },
       { title: 'Handles everything', desc: 'Search, delivery check, and checkout in one flow' },
       { title: 'Always here', desc: 'Pick up where you left off anytime' },

@@ -12,7 +12,8 @@ import { messagesForModel } from '@/lib/conversation-context'
 import { isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
-import { getEnglishDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
+import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
+import { runAgenticShoppingShortcut } from '@/lib/agentic-shopping'
 import {
   checkoutDetailsAreValid,
   forcePlanToCollectDetails,
@@ -39,6 +40,10 @@ function statusLabel(name: string, args: Record<string, unknown> = {}) {
       }
     case 'kapruka_create_order':
       return { icon: 'lock', key: 'order', label: 'Locking in your order' }
+    case 'agent_concierge':
+      return { icon: 'sparkles', key: 'concierge', label: String(args.label ?? 'Reading the situation') }
+    case 'agent_logistics':
+      return { icon: 'truck', key: 'logistics', label: String(args.label ?? 'Checking the practical side') }
     case 'kapruka_track_order':
       return { icon: 'compass', key: 'track', label: 'Tracking order' }
     default:
@@ -289,14 +294,30 @@ export async function POST(req: Request) {
             lastUserMessage.content
           )
 
+        if (lastUserMessage && !checkoutDetails) {
+          const shortcutPayload = await runAgenticShoppingShortcut({
+            text: lastUserMessage.content,
+            chatLang,
+            mcp,
+            emitStatus: (name, args = {}) => emit({ type: 'status', ...statusLabel(name, args) }),
+          })
+
+          if (shortcutPayload) {
+            emit({ type: 'final', payload: shortcutPayload })
+            return
+          }
+        }
+
         if (
-          (chatLang === 'singlish' || chatLang === 'tanglish' || explicitEnglishRequest || chatLang === 'en') &&
+          (chatLang === 'singlish' || chatLang === 'tanglish' || chatLang === 'si' || explicitEnglishRequest || chatLang === 'en') &&
           lastUserMessage &&
           !checkoutDetails
         ) {
           const directReply =
             chatLang === 'tanglish'
               ? getTanglishDirectReply(lastUserMessage.content)
+              : chatLang === 'si'
+              ? getSinhalaDirectReply(lastUserMessage.content)
               : chatLang === 'singlish' || explicitEnglishRequest
               ? getSinglishDirectReply(lastUserMessage.content)
               : getEnglishDirectReply(lastUserMessage.content)

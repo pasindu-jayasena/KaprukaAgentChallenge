@@ -40,7 +40,7 @@ const ta = {
     title: 'Anu · Kapruka concierge',
     openingHeadline: 'இன்று Anu உங்களுக்காக என்ன செய்ய வேண்டும்?',
     openingSub: 'Kapruka-வில் சரியான பொருளுக்கு உங்கள் பாதை.',
-    openingPlaceholder: 'e.g., "Gift, groceries, illa item - budget Rs. 15000"',
+    openingPlaceholder: 'e.g., "Gift, groceries, electronics..."',
     headline: 'இன்று என்ன தேட வேண்டும்?',
     subhead: 'Groceries, gifts, electronics, fashion - enna venum sollunga.',
     placeholder: 'கேளுங்கள், மாற்றுங்கள், அல்லது என்ன மாறியது சொல்லுங்கள்…',

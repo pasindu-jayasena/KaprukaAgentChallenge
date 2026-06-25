@@ -164,18 +164,22 @@ function isBudgetTightenRequest(text: string) {
 }
 
 function isEmotionalFlowerRequest(text: string) {
+  const raw = text.toLowerCase().normalize('NFC')
   const t = normalize(text)
-  const sinhalaFlower = hasSinhala(t) && hasCodes(t, 0x0db8, 0x0dbd)
+  const sinhalaText = hasSinhala(raw)
+  const sinhalaFlower = sinhalaText && (/මල්|රෝස|මලක්/.test(raw) || hasCodes(raw, 0x0db8, 0x0dbd))
   const sinhalaEmotion =
-    hasSinhala(t) &&
-    (hasCodes(t, 0x0daf, 0x0dd4, 0x0d9a) || hasCodes(t, 0x0dc3, 0x0db8, 0x0dcf))
+    sinhalaText &&
+    (/දුක|සමාව|තරහ|කණගාටු|අමනාප|බිඳුන/.test(raw) ||
+      hasCodes(raw, 0x0daf, 0x0dd4, 0x0d9a) ||
+      hasCodes(raw, 0x0dc3, 0x0db8, 0x0dcf))
+  const sinhalaSend = sinhalaText && (/යවන්න|දෙන්න|ඕන|ඔන|බලන්න/.test(raw) || hasCodes(raw, 0x0dba, 0x0dc0, 0x0db1))
   return (
     (/\b(broke up|breakup|girlfriend|boyfriend|wife|husband|sorry|apology|fight|argued|angry|sad|upset|duken|duka|tharaha|kopa|pirinju|kashtam)\b/.test(t) &&
       /\b(flowers?|roses?|mal|gift|send|denna|anuppu)\b/.test(t)) ||
-    (sinhalaFlower && sinhalaEmotion)
+    (sinhalaFlower && sinhalaEmotion && (sinhalaSend || /මල්|රෝස/.test(raw)))
   )
 }
-
 function isEverydayBasketRequest(text: string) {
   const t = normalize(text)
   const sinhalaSelfShop =

@@ -3,6 +3,11 @@ import type { KaprukaMCPClient } from '@/lib/server/mcp-client'
 
 type StatusEmitter = (name: string, args?: Record<string, unknown>) => void
 
+interface ChatTurn {
+  role: string
+  content: string
+}
+
 interface SearchProduct {
   id?: string
   name?: string
@@ -150,29 +155,92 @@ function noteWriterCopy(chatLang: ChatLang) {
 function romanticGiftCopy(chatLang: ChatLang, chocolate: boolean) {
   if (chatLang === 'singlish' || chatLang === 'si') {
     return chocolate
-      ? 'Hari, eyata denna chocolate gift ekak nam sweet and safe choice. Biscuit/snack wage random dewal nemei - gift widihata denna puluwan chocolate options tika me. Thawa romantic karanna one nam flowers hari note card ekak add karamu.'
-      : 'Hari, eyata denna gift ekak nam over karanna epa - classy, simple, thoughtful widihata yamu. Mama random dewal nemei, gift widihata denna puluwan options tika pennannam. Budget ekak thiyenawanam kiyanna, mama thawa tight karannam.'
+      ? 'Hari, eyata denna chocolate gift ekak nam sweet choice. Mama snacks/biscuits nemei, gift widihata denna puluwan chocolate options tika balala pennannam. Thawa romantic karanna one nam flowers hari note card ekak add karamu.'
+      : 'Hari, sweet idea. Random gift ekak dammoth ehema feel wenne na. Eyata chocolate, flowers, teddy, perfume wage mokakda set wenne? Budget eka kiyada?'
   }
   if (chatLang === 'tanglish') {
     return chocolate
-      ? 'Seri, girlfriend-ku chocolate gift sweet and safe choice. Random snack madhiri illa - gift-a kudukka suitable chocolate options idhu. More romantic venumna flowers illa note card add pannalam.'
-      : 'Seri, girlfriend-ku gift-na classy and thoughtful-a poduvom. Random items illa, proper gift options kaamikiren. Budget irundha sollunga, naan tighter-a pick pannuren.'
+      ? 'Seri, girlfriend-ku chocolate gift sweet choice. Random snacks illa, gift-a kudukka suitable chocolate options kaamikiren. More romantic venumna flowers illa note card add pannalam.'
+      : 'Seri, sweet idea. Random gift kudutha feel aagathu. Chocolate, flowers, teddy, perfume-la edhu suit aagum? Budget evlo?'
   }
   return chocolate
-    ? "Good call. Chocolate for your girlfriend should feel like a gift, not random snacks, so I picked gift-style chocolate options. Add flowers or a small note if you want it to feel more romantic."
-    : "Sweet. For your girlfriend, I would keep it classy and thoughtful instead of random. I picked gift-style options; tell me the budget if you want me to tighten it."
+    ? 'Good call. Chocolate for her should feel like a gift, not random snacks, so I picked proper chocolate gift options. Add flowers or a small note if you want it to feel more romantic.'
+    : 'Sweet idea. I would not jump to a random product yet. What style should it be: chocolates, flowers, teddy, perfume, or something else? Also, what budget are we keeping?'
 }
 
-function isRomanticGiftRequest(text: string) {
+function romanticQuestionPayload(chatLang: ChatLang): ChatPayload {
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    return {
+      type: 'chat',
+      text: romanticGiftCopy(chatLang, false),
+      chips: ['Show chocolates', 'Flowers balamu', 'Under Rs. 5000'],
+    }
+  }
+  if (chatLang === 'tanglish') {
+    return {
+      type: 'chat',
+      text: romanticGiftCopy(chatLang, false),
+      chips: ['Show chocolates', 'Show flowers', 'Under Rs. 5000'],
+    }
+  }
+  return {
+    type: 'chat',
+    text: romanticGiftCopy(chatLang, false),
+    chips: ['Show chocolates', 'Show flowers', 'Under Rs. 5000'],
+  }
+}
+
+function recentConversationText(messages?: ChatTurn[]) {
+  return (messages ?? [])
+    .filter((m) => !m.content.includes('CHECKOUT_DETAILS:'))
+    .slice(-6)
+    .map((m) => m.content)
+    .join(' ')
+}
+
+function hasRomanticContext(text: string, messages?: ChatTurn[]) {
+  const t = normalize(text + ' ' + recentConversationText(messages))
+  return /\b(girlfriend|gf|wife|partner|crush|kella|kellawa|girl|eyata|eyage|eya|she|her|love|romantic|yalu|yaluw)\b/.test(t)
+}
+
+function hasSpecificGiftCategory(text: string) {
   const t = normalize(text)
-  const recipient = /\b(girlfriend|gf|wife|partner|crush|kella|kellawa|girl|eyata|eyage|eya|she|her)\b/.test(t)
-  const product = /\b(chocolates?|gift|hamper|teddy|perfume|flowers?|rose|note|watch|jewell?ery)\b/.test(t)
-  const intent = /\b(want|need|looking for|send|buy|gift|denna|one|ona|oni|yavanna|karaganna|yaluw|yalu)\b/.test(t)
-  return recipient && product && intent
+  return /\b(chocolates?|choco|cadbury|ferrero|hamper|teddy|perfume|flowers?|rose|watch|jewell?ery)\b/.test(t)
 }
 
-function wantsChocolateGift(text: string) {
-  return /\b(chocolates?|choco|cadbury|ferrero)\b/.test(normalize(text))
+function isRomanticGiftRequest(text: string, messages?: ChatTurn[]) {
+  const t = normalize(text)
+  const context = hasRomanticContext(text, messages)
+  const product = /\b(chocolates?|choco|gift|hamper|teddy|perfume|flowers?|rose|note|watch|jewell?ery)\b/.test(t)
+  const intent = /\b(show|find|search|browse|want|need|looking for|send|buy|gift|denna|one|ona|oni|yavanna|karaganna|yaluw|yalu|balamu|pennanna)\b/.test(t)
+  return context && product && intent
+}
+
+function wantsChocolateGift(text: string, messages?: ChatTurn[]) {
+  return /\b(chocolates?|choco|cadbury|ferrero)\b/.test(normalize(text)) && hasRomanticContext(text, messages)
+}
+
+function isChocolateBrowseRequest(text: string) {
+  const t = normalize(text)
+  return /\b(chocolates?|choco|cadbury|ferrero)\b/.test(t) && /\b(show|find|search|browse|want|need|looking for|buy|order|balamu|pennanna|one|ona|oni)\b/.test(t)
+}
+
+function chocolateBrowseCopy(chatLang: ChatLang) {
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    return 'Hari, chocolates nam mama proper chocolate options tika pennannam. Snacks/biscuits nemei - gift ekakata hari treat ekakata hari denna puluwan dewal balamu.'
+  }
+  if (chatLang === 'tanglish') {
+    return 'Seri, proper chocolate options kaamikiren. Snacks/biscuits illa - gift-ku illa treat-ku suitable-a irukkura items paakalam.'
+  }
+  return "Sure. I'll show proper chocolate options, not snack biscuits. These work as a gift or a good treat."
+}
+
+function unsuitableGiftProduct(text: string) {
+  return /\b(snackers?|biscuits?|chips?|short\s?cake|savoury|cheese|chillie|for\s+men|men'?s|mens|male|husband|father|dad)\b/i.test(text)
+}
+
+function chocolateGiftProduct(text: string) {
+  return /\b(chocolate|choco|cadbury|ferrero)\b/i.test(text) && !unsuitableGiftProduct(text)
 }
 
 function isNoteCardRequest(text: string) {
@@ -185,14 +253,11 @@ function isNoteWritingRequest(text: string) {
   return /\b(help write|write|draft|message|note eka|note|caption)\b/.test(t) && /\b(note|sorry|apology|flowers?|girlfriend|wife|message|card)\b/.test(t)
 }
 
-function isSnackRequest(text: string) {
+function isSnackRequest(text: string, messages?: ChatTurn[]) {
   const t = normalize(text)
-  if (isRomanticGiftRequest(text)) return false
+  if (isRomanticGiftRequest(text, messages)) return false
   const explicitSnack = /\b(snacks?|biscuits?|tea time|add more groceries)\b/.test(t)
-  const plainChocolateBasket =
-    /\b(chocolates?|choco)\b/.test(t) &&
-    !/\b(gift|girlfriend|gf|wife|partner|crush|kella|kellawa|girl|she|her|eyata|eyage|birthday|anniversary|romantic|love)\b/.test(t)
-  return explicitSnack || plainChocolateBasket
+  return explicitSnack
 }
 
 function isBudgetTightenRequest(text: string) {
@@ -243,18 +308,22 @@ export async function runAgenticShoppingShortcut(opts: {
   chatLang: ChatLang
   mcp: KaprukaMCPClient
   emitStatus: StatusEmitter
+  messages?: ChatTurn[]
 }): Promise<ChatPayload | null> {
-  const { text, chatLang, mcp, emitStatus } = opts
+  const { text, chatLang, mcp, emitStatus, messages } = opts
 
-  if (isRomanticGiftRequest(text)) {
+  if (isRomanticGiftRequest(text, messages)) {
+    const chocolate = wantsChocolateGift(text, messages)
+    if (!chocolate && !hasSpecificGiftCategory(text)) {
+      return romanticQuestionPayload(chatLang)
+    }
     const budget = parseBudget(text)
-    const chocolate = wantsChocolateGift(text)
     emitStatus('agent_concierge', { label: chocolate ? 'Picking proper chocolate gifts' : 'Picking a thoughtful gift' })
     const query = chocolate ? 'chocolate gift for her cadbury ferrero' : 'gift for her chocolate teddy rose perfume'
     const results = await searchProducts(mcp, query, budget, emitStatus)
     const backupResults = chocolate ? await searchProducts(mcp, 'cadbury ferrero chocolate gift', budget, emitStatus) : []
     const combined = [...results, ...backupResults]
-    const unsuitableGift = /\b(snackers?|biscuits?|chips?|short\s?cake|savoury|cheese|chillie|for\s+men|men['’]?s|mens|male|husband|father|dad)\b/i
+    const unsuitableGift = /\b(snackers?|biscuits?|chips?|short\s?cake|savoury|cheese|chillie|for\s+men|men'?s|mens|male|husband|father|dad)\b/i
     const filtered = combined.filter((p) => {
       const haystack = String(p.name ?? '') + ' ' + String(p.summary ?? '')
       if (unsuitableGift.test(haystack)) return false
@@ -269,6 +338,23 @@ export async function runAgenticShoppingShortcut(opts: {
       rawText: romanticGiftCopy(chatLang, chocolate),
       trio: { context: chocolate ? 'Chocolate gifts for her' : 'Gift picks for her', products },
       chips: chocolate ? ['Add flowers', 'Add note card', 'Under Rs. 5000'] : ['Show chocolates', 'Add flowers', 'Under Rs. 5000'],
+    }
+  }
+
+  if (isChocolateBrowseRequest(text)) {
+    const budget = parseBudget(text)
+    emitStatus('agent_concierge', { label: 'Finding proper chocolates' })
+    const results = await searchProducts(mcp, 'chocolate gift cadbury ferrero hamper', budget, emitStatus)
+    const backupResults = await searchProducts(mcp, 'chocolate bouquet hamper', budget, emitStatus)
+    const combined = [...results, ...backupResults]
+    const filtered = combined.filter((p) => chocolateGiftProduct(String(p.name ?? '') + ' ' + String(p.summary ?? '')))
+    const products = toProducts(filtered, 'gift')
+    if (!products.length) return null
+    return {
+      type: 'product_trio',
+      rawText: chocolateBrowseCopy(chatLang),
+      trio: { context: 'Chocolate options', products },
+      chips: ['Add flowers', 'Add note card', 'Under Rs. 5000'],
     }
   }
 
@@ -296,7 +382,7 @@ export async function runAgenticShoppingShortcut(opts: {
     }
   }
 
-  if (isSnackRequest(text)) {
+  if (isSnackRequest(text, messages)) {
     const budget = parseBudget(text)
     emitStatus('agent_concierge', { label: 'Adding useful extras' })
     const results = await searchProducts(mcp, 'snacks biscuits groceries', budget, emitStatus)

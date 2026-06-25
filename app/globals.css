@@ -1051,12 +1051,22 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
     visibility: visible !important;
     opacity: 1 !important;
     flex: 0 0 2rem;
-    color: var(--text-muted);
-    background: transparent;
+    color: #5f4b75 !important;
+    background: rgba(64, 31, 96, 0.08) !important;
+    border-radius: 999px;
+    position: relative;
+    z-index: 3;
   }
 
   .home-input-wrap .input-actions button[aria-label='Send'] {
     flex: 0 0 2rem;
+    position: relative;
+    z-index: 3;
+  }
+
+  [data-theme='dark'] .home-input-wrap .input-actions button[aria-label='Voice input'] {
+    color: rgba(255, 255, 255, 0.82) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
   }
 }
 
@@ -1074,9 +1084,23 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
     color: var(--text-primary);
   }
 
-  .input-send-btn:hover:not(:disabled) {
+  .input-send-btn:hover:not(:disabled),
+  .input-send-btn:focus:not(:disabled) {
     background: #FCE22A;
     box-shadow: 0 2px 8px rgba(252, 226, 42, 0.3);
+    transform: none;
+  }
+
+  .home-input-wrap .input-actions button[aria-label='Voice input']:hover,
+  .home-input-wrap .input-actions button[aria-label='Voice input']:focus {
+    color: #5f4b75 !important;
+    background: rgba(64, 31, 96, 0.08) !important;
+  }
+
+  [data-theme='dark'] .home-input-wrap .input-actions button[aria-label='Voice input']:hover,
+  [data-theme='dark'] .home-input-wrap .input-actions button[aria-label='Voice input']:focus {
+    color: rgba(255, 255, 255, 0.82) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
   }
 
   .kap-nav-icon:hover,

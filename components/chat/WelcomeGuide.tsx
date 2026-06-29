@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Gift, HeartHandshake, ShoppingBasket, PlugZap, X } from 'lucide-react'
+import { Gift, HeartHandshake, ShoppingBasket, PlugZap, Truck, X } from 'lucide-react'
 
 interface Props {
   onPick?: (prompt: string) => void
@@ -32,6 +32,12 @@ const STARTERS = [
     label: 'Find an item',
     description: 'Tell me the type, budget, brand, or use case.',
     prompt: 'I need help finding an item',
+  },
+  {
+    icon: Truck,
+    label: 'Track order',
+    description: 'Check delivery status with an order number.',
+    prompt: 'Track my order',
   },
 ]
 

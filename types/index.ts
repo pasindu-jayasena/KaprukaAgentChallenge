@@ -58,6 +58,24 @@ export interface OrderTracking {
   status: string
   eta?: string
   steps?: Array<{ label: string; done: boolean }>
+  orderNumber?: string
+  pnref?: string
+  statusDisplay?: string
+  orderDate?: string
+  deliveryDate?: string
+  shippedDate?: string
+  amount?: { value: string; currency: string }
+  paymentMethod?: string
+  comments?: string
+  recipient?: { name: string; phone: string; address: string; city: string }
+  greetingMessage?: string
+  specialInstructions?: string
+  progress?: Array<{ step: string; timestamp?: string; done?: boolean }>
+  latestUpdate?: { step: string; timestamp?: string; done?: boolean }
+  liveTrackingAvailable?: boolean
+  hasDeliveryVideo?: boolean
+  hasDeliveryPhoto?: boolean
+  items?: unknown[]
 }
 
 export interface CartItem {

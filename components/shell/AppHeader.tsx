@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Moon, Search, ShoppingCart, Sun } from 'lucide-react'
+import { Menu, Moon, Search, ShoppingCart, Sun, Truck } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useTheme } from '@/providers/ThemeProvider'
 import { CartBadge } from '@/components/shell/CartBadge'
@@ -102,6 +102,14 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
             <ShoppingCart className="h-[18px] w-[18px]" />
             <CartBadge />
           </button>
+          <Link
+            href="/chat?intent=track"
+            aria-label={messages.nav.track}
+            className="kap-nav-icon"
+          >
+            <Truck className="h-[18px] w-[18px]" />
+          </Link>
+
 
           <button
             type="button"

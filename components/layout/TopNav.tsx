@@ -153,7 +153,7 @@ export function TopNav({ compact, showAnu }: TopNavProps) {
 
             <Link
               href="/chat?intent=track"
-              className="hidden rounded-lg p-2 hover:bg-white/10 sm:block"
+              className="rounded-lg p-2 hover:bg-white/10"
               aria-label={messages.nav.track}
             >
               <Truck className="h-5 w-5" />

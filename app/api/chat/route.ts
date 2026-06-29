@@ -15,6 +15,13 @@ import { polishAssistantText } from '@/lib/prompts/singlish-style'
 import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
 import { runAgenticShoppingShortcut } from '@/lib/agentic-shopping'
 import {
+  getTrackingDecision,
+  normalizeTrackingResponse,
+  trackingAskPayload,
+  trackingErrorPayload,
+  trackingSuccessText,
+} from '@/lib/order-tracking'
+import {
   checkoutDetailsAreValid,
   forcePlanToCollectDetails,
   normalizeCheckoutDetails,
@@ -239,6 +246,36 @@ export async function POST(req: Request) {
         )
         let pendingOrderArgs: Record<string, unknown> | null = null
         let responseText = ''
+
+        if (lastUserMessage && !checkoutDetails) {
+          const trackingDecision = getTrackingDecision(lastUserMessage.content)
+          if (trackingDecision.action === 'ask') {
+            emit({ type: 'final', payload: trackingAskPayload(chatLang) })
+            return
+          }
+          if (trackingDecision.action === 'track') {
+            emit({ type: 'status', ...statusLabel('kapruka_track_order', { order_number: trackingDecision.orderNumber }) })
+            const rawTracking = await mcp.callTool('kapruka_track_order', {
+              order_number: trackingDecision.orderNumber,
+              response_format: 'json',
+            })
+            const tracking = normalizeTrackingResponse(rawTracking, trackingDecision.orderNumber)
+            if (!tracking) {
+              emit({ type: 'final', payload: trackingErrorPayload(trackingDecision.orderNumber, chatLang) })
+              return
+            }
+            emit({
+              type: 'final',
+              payload: {
+                type: 'order_tracking',
+                rawText: trackingSuccessText(tracking, chatLang),
+                tracking,
+                chips: ['Track another order', 'Need another gift', 'Shop for myself'],
+              },
+            })
+            return
+          }
+        }
 
         // Structured checkout from chat — show review card first, not payment slip
         if (checkoutDetails && cart.length > 0) {

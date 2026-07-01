@@ -1,3 +1,4 @@
+import type { TrackingContext } from '@/lib/conversation-flow'
 import type { ChatLang, ChatPayload, OrderTracking } from '@/types'
 
 export const DEMO_TRACKING_REF = process.env.NEXT_PUBLIC_DEMO_TRACKING_REF || 'VPAY827982BA'
@@ -53,12 +54,35 @@ function hasTamil(text: string) {
   })
 }
 
-export function extractTrackingOrderNumber(input: string): string | null {
-  const candidates = input.toUpperCase().match(/\b[A-Z]{2,8}\d[A-Z0-9]{5,}\b|\b\d{6,}\b/g) ?? []
-  return candidates[0] ?? null
+function hasExplicitTrackingIntent(input: string) {
+  const t = clean(input)
+  return (
+    /\b(track|tracking|where is my order|where's my order|order status|status of my order|my order|delivery status)\b/.test(t) ||
+    /\border\b.*\b(koheda|kohomada|track|status|eka)\b/.test(t) ||
+    /\b(koheda|kohomada)\b.*\border\b/.test(t) ||
+    /\b(order eka|track karanna|track karamu|mage order)\b/.test(t)
+  )
 }
 
-export function getTrackingDecision(input: string): TrackingDecision {
+export function looksLikePhoneOrAddress(input: string): boolean {
+  const text = input.trim()
+  const digits = text.replace(/\D/g, '')
+  if (digits.length >= 9 && digits.length <= 12 && /(?:^|[\s,])(?:\+?94|0)?\d[\d\s-]{7,12}\d(?:[\s,]|$)/.test(text)) return true
+  if (/[,/\\-]/.test(text) && /\b(?:road|rd|street|st|lane|mawatha|galle|colombo|kandy|ganemulla|negombo|matara)\b/i.test(text)) return true
+  return false
+}
+
+export function extractTrackingOrderNumber(input: string, context: TrackingContext = { mode: 'shopping' }): string | null {
+  const explicit = hasExplicitTrackingIntent(input)
+  const alphaRefs = input.toUpperCase().match(/\b[A-Z]{2,8}\d[A-Z0-9]{5,}\b/g) ?? []
+  if (alphaRefs[0]) return alphaRefs[0]
+  if (!explicit && context.mode !== 'tracking_collecting') return null
+  if (looksLikePhoneOrAddress(input) && context.mode !== 'tracking_collecting') return null
+  const numericRefs = input.toUpperCase().match(/\b\d{6,}\b/g) ?? []
+  return numericRefs[0] ?? null
+}
+
+export function getTrackingDecision(input: string, context: TrackingContext = { mode: 'shopping' }): TrackingDecision {
   const text = input.trim()
   if (!text) return { action: 'ignore' }
 
@@ -68,10 +92,9 @@ export function getTrackingDecision(input: string): TrackingDecision {
       : { action: 'ask' }
   }
 
-  const orderNumber = extractTrackingOrderNumber(text)
+  const orderNumber = extractTrackingOrderNumber(text, context)
   if (orderNumber) return { action: 'track', orderNumber }
 
-  const t = clean(text)
   const sinhalaTrackingIntent =
     hasSinhala(text) &&
     (/\u0d87\u0dab\u0dc0\u0dd4\u0db8/.test(text) || /order|track|status/i.test(text))
@@ -79,10 +102,7 @@ export function getTrackingDecision(input: string): TrackingDecision {
     hasTamil(text) &&
     (/\u0b86\u0bb0\u0bcd\u0b9f\u0bb0\u0bcd/.test(text) || /\u0b95\u0ba3\u0bcd\u0b95\u0bbe\u0ba3/.test(text) || /order|track|status/i.test(text))
   const trackingIntent =
-    /\b(track|tracking|where is my order|where's my order|order status|status of my order|my order|delivery status)\b/.test(t) ||
-    /\border\b.*\b(koheda|kohomada|track|status|eka)\b/.test(t) ||
-    /\b(koheda|kohomada)\b.*\border\b/.test(t) ||
-    /\b(order eka|track karanna|track karamu|mage order)\b/.test(t) ||
+    hasExplicitTrackingIntent(text) ||
     sinhalaTrackingIntent ||
     tamilTrackingIntent
 

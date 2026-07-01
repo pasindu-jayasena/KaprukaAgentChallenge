@@ -1,0 +1,255 @@
+import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
+import type { CartItem, ChatLang, ChatPayload, CheckoutDetailsInput } from '@/types'
+
+interface ChatTurn {
+  role: string
+  content: string
+}
+
+export type ConversationMode =
+  | 'shopping'
+  | 'checkout_collecting'
+  | 'checkout_review'
+  | 'paid_or_payment_link'
+  | 'tracking_collecting'
+
+export interface TrackingContext {
+  mode: ConversationMode
+}
+
+export interface CheckoutContinuation {
+  payload?: ChatPayload
+  details?: CheckoutDetailsInput
+}
+
+interface CheckoutDraft {
+  recipientName?: string
+  phone?: string
+  address?: string
+  city?: string
+  date?: string
+  senderName?: string
+  senderEmail?: string
+  giftMessage?: string
+}
+
+function clean(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\p{N}\s@./,'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function stripCheckoutMarker(text: string) {
+  return text.replace(/CHECKOUT_DETAILS:[\s\S]*?(?=\n\n|$)/gi, '').trim()
+}
+
+function lastAssistant(messages: ChatTurn[]) {
+  return [...messages].reverse().find((m) => m.role === 'assistant')?.content ?? ''
+}
+
+function recentText(messages: ChatTurn[], count = 8) {
+  return messages.slice(-count).map((m) => stripCheckoutMarker(m.content)).join(' ')
+}
+
+export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): ConversationMode {
+  const last = clean(lastAssistant(messages))
+  const recent = clean(recentText(messages))
+
+  if (/\b(order number|tracking number|send me your kapruka order|track karanna order number|order track panna order number)\b/.test(last)) {
+    return 'tracking_collecting'
+  }
+  if (/\b(payment link|order ready for payment|complete the payment|thank you for choosing kapruka)\b/.test(recent)) {
+    return 'paid_or_payment_link'
+  }
+  if (/\b(review your order|prepare the order review|tap confirm|confirm to get your kapruka payment link)\b/.test(recent)) {
+    return 'checkout_review'
+  }
+
+  const checkoutLanguage =
+    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|deliver to|delivery date|sender name|who is sending|checkout now|ready to pay)\b/.test(recent) ||
+    /\b(checkout karannada|checkout pannalama|order eka receive karanne|gift eka katada)\b/.test(recent)
+
+  return cart.length > 0 && checkoutLanguage ? 'checkout_collecting' : 'shopping'
+}
+
+function looksLikeRecipientName(text: string) {
+  const t = clean(text)
+  if (!t || t.length < 2) return false
+  if (/\d/.test(t)) return false
+  if (/\b(checkout|track|order|phone|address|city|date)\b/.test(t)) return false
+  return t.split(/\s+/).length <= 4
+}
+
+function extractPhone(text: string) {
+  const match = text.match(/(?:\+?94|0)?\d[\d\s-]{7,12}\d/)
+  return match?.[0]?.replace(/[^\d+]/g, '') ?? undefined
+}
+
+function extractEmail(text: string) {
+  return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
+}
+
+function extractDate(text: string) {
+  const t = clean(text)
+  const explicit = text.match(/\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2})\b/)
+  if (explicit) return explicit[1].replace(/\//g, '-')
+  const dayMonth = text.match(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})\b/)
+  if (dayMonth) {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = dayMonth[2].padStart(2, '0')
+    const day = dayMonth[1].padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  if (/\btomorrow|heta|naalai\b/.test(t)) return colomboDateOffset(1)
+  if (/\btoday|ada|indru\b/.test(t)) return colomboDateOffset(0)
+  return undefined
+}
+
+function colomboDateOffset(days: number) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Colombo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const year = Number(parts.find((p) => p.type === 'year')?.value)
+  const month = Number(parts.find((p) => p.type === 'month')?.value)
+  const day = Number(parts.find((p) => p.type === 'day')?.value)
+  const d = new Date(Date.UTC(year, month - 1, day + days))
+  return d.toISOString().slice(0, 10)
+}
+
+function splitDetails(text: string) {
+  return text
+    .split(/[,\n;]/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+}
+
+function extractCity(text: string, phone?: string) {
+  const parts = splitDetails(phone ? text.replace(phone, '') : text)
+  const city = [...parts].reverse().find((p) => /[a-zA-Z\u0d80-\u0dff\u0b80-\u0bff]/.test(p) && p.length <= 40)
+  return city?.replace(/\b(city|town)\b/gi, '').trim()
+}
+
+function extractAddress(text: string, phone?: string, city?: string) {
+  let value = text
+  if (phone) value = value.replace(phone, '')
+  if (city) value = value.replace(city, '')
+  value = value.replace(/^[,\s]+|[,\s]+$/g, '').replace(/\s*,\s*/g, ', ')
+  if (value.length < 3) return undefined
+  return value
+}
+
+function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText: string) {
+  const ask = clean(assistantText)
+  const text = userText.trim()
+  const phone = extractPhone(text)
+  const date = extractDate(text)
+  const email = extractEmail(text)
+
+  if (/\b(who should receive|recipient name|receive this order|gift eka katada|katada)\b/.test(ask) && looksLikeRecipientName(text)) {
+    draft.recipientName = text
+    return
+  }
+
+  if (/\b(phone number|delivery address|which city|address|city|deliver to)\b/.test(ask)) {
+    if (phone) draft.phone = phone
+    const city = extractCity(text, phone)
+    if (city) draft.city = city
+    const address = extractAddress(text, phone, city)
+    if (address) draft.address = address
+    return
+  }
+
+  if (/\b(delivery date|deliver date|which date|date)\b/.test(ask)) {
+    if (date) draft.date = date
+    return
+  }
+
+  if (/\b(sender|who is sending|your name|from who)\b/.test(ask)) {
+    if (email) draft.senderEmail = email
+    const name = text.replace(email ?? '', '').replace(/[,;]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (looksLikeRecipientName(name)) draft.senderName = name
+    return
+  }
+
+  if (phone && !draft.phone) draft.phone = phone
+  if (date && !draft.date) draft.date = date
+}
+
+export function collectCheckoutDraft(messages: ChatTurn[]): CheckoutDraft {
+  const draft: CheckoutDraft = {}
+  for (let i = 0; i < messages.length; i += 1) {
+    const msg = messages[i]
+    if (msg.role !== 'user') continue
+    const prevAssistant = [...messages.slice(0, i)].reverse().find((m) => m.role === 'assistant')?.content ?? ''
+    mergeFieldAnswer(draft, prevAssistant, stripCheckoutMarker(msg.content))
+  }
+  return draft
+}
+
+function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
+  const name = draft.recipientName || 'the recipient'
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    if (missing === 'name') return 'Checkout karanna kalin actual recipient name eka denna. Gift eka receive karanne katada?'
+    if (missing === 'phone') return `Got it. ${name} ge phone number, delivery address, city eka ewannako.`
+    if (missing === 'date') return 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
+    return 'Last step eka: sender name eka ewannako. Email nathnam guest email use karannam.'
+  }
+  if (chatLang === 'tanglish' || chatLang === 'ta') {
+    if (missing === 'name') return 'Checkout panna actual recipient name venum. Yaarukku deliver panna?'
+    if (missing === 'phone') return `Got it. ${name} phone number, delivery address, city anuppunga.`
+    if (missing === 'date') return 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
+    return 'Last step: sender name anuppunga. Email illena guest email use pannuren.'
+  }
+  if (missing === 'name') return 'Sure. Who should receive this order? Please send the actual recipient name.'
+  if (missing === 'phone') return `Got it. What is ${name}'s phone number, delivery address, and city?`
+  if (missing === 'date') return 'What delivery date should I use? You can say tomorrow or send a specific date.'
+  return 'Last step: who is sending this? Send your sender name; email is optional.'
+}
+
+export function continueCheckoutCollection(
+  messages: ChatTurn[],
+  cart: CartItem[],
+  chatLang: ChatLang
+): CheckoutContinuation | null {
+  if (!cart.length || inferConversationMode(messages, cart) !== 'checkout_collecting') return null
+
+  const draft = collectCheckoutDraft(messages)
+  const missing =
+    !draft.recipientName ? 'name' :
+    !draft.phone || !draft.address || !draft.city ? 'phone' :
+    !draft.date ? 'date' :
+    !draft.senderName ? 'sender' :
+    null
+
+  if (missing) {
+    return {
+      payload: {
+        type: 'chat',
+        text: askText(missing, draft, chatLang),
+        chips: missing === 'date' ? ['Tomorrow', 'This weekend'] : undefined,
+      },
+    }
+  }
+
+  return {
+    details: {
+      senderName: draft.senderName!,
+      senderEmail: draft.senderEmail || DEFAULT_SENDER_EMAIL,
+      giftMessage: draft.giftMessage,
+      recipient: {
+        name: draft.recipientName!,
+        phone: draft.phone!,
+        address: draft.address!,
+        city: draft.city!,
+        date: draft.date!,
+      },
+    },
+  }
+}

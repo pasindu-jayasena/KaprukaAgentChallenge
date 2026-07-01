@@ -14,6 +14,7 @@ import { sanitizeAssistantText } from '@/lib/server/mcp-order'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
 import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
 import { runAgenticShoppingPipeline } from '@/lib/agent-orchestrator'
+import { continueCheckoutCollection, inferConversationMode } from '@/lib/conversation-flow'
 import {
   getTrackingDecision,
   normalizeTrackingResponse,
@@ -246,9 +247,48 @@ export async function POST(req: Request) {
         )
         let pendingOrderArgs: Record<string, unknown> | null = null
         let responseText = ''
+        const conversationMode = inferConversationMode(messages, cart)
 
         if (lastUserMessage && !checkoutDetails) {
-          const trackingDecision = getTrackingDecision(lastUserMessage.content)
+          const checkoutContinuation = continueCheckoutCollection(messages, cart, chatLang)
+          if (checkoutContinuation?.payload) {
+            emit({ type: 'final', payload: checkoutContinuation.payload })
+            return
+          }
+          if (checkoutContinuation?.details) {
+            emit({
+              type: 'status',
+              icon: 'search',
+              key: 'delivery',
+              label: 'Checking delivery fee',
+            })
+            try {
+              const normalizedCheckout = normalizeCheckoutDetails(checkoutContinuation.details)
+              const preview = await getCheckoutPreview(cart, normalizedCheckout)
+              emit({
+                type: 'final',
+                payload: buildOrderPreviewPayload(
+                  cart,
+                  normalizedCheckout,
+                  preview,
+                  'Perfect, I have the delivery details. Please review this before I prepare the payment link.'
+                ),
+              })
+              return
+            } catch (previewErr) {
+              console.error('Checkout continuation preview error:', previewErr)
+              emit({
+                type: 'final',
+                payload: {
+                  type: 'chat',
+                  text: 'I have the details, but I could not load the delivery fee. Please check the city/date and try again.',
+                },
+              })
+              return
+            }
+          }
+
+          const trackingDecision = getTrackingDecision(lastUserMessage.content, { mode: conversationMode })
           if (trackingDecision.action === 'ask') {
             emit({ type: 'final', payload: trackingAskPayload(chatLang) })
             return

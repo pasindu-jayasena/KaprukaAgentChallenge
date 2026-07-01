@@ -32,6 +32,7 @@ interface Slots {
   recipient?: 'girlfriend' | 'wife' | 'partner' | 'self' | 'other'
   budget?: number
   mood?: 'sad' | 'apology' | 'romantic' | 'practical'
+  simple?: boolean
   broad: boolean
 }
 
@@ -39,9 +40,9 @@ function normalize(text: string) {
   return text.toLowerCase().normalize('NFC').replace(/[^\p{L}\p{M}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function memory(messages?: ChatTurn[]) {
+function memory(messages?: ChatTurn[], role?: string) {
   return (messages ?? [])
-    .filter((m) => !m.content.includes('CHECKOUT_DETAILS:'))
+    .filter((m) => (!role || m.role === role) && !m.content.includes('CHECKOUT_DETAILS:'))
     .slice(-8)
     .map((m) => m.content)
     .join(' ')
@@ -83,13 +84,15 @@ function recipientOf(text: string): Slots['recipient'] | undefined {
 
 function classify(text: string, messages?: ChatTurn[]): Slots {
   const now = normalize(text)
-  const all = normalize(text + ' ' + memory(messages))
+  const all = normalize(text + ' ' + memory(messages, 'user'))
   const category = categoryOf(now) ?? categoryOf(all)
   const recipient = recipientOf(all)
-  const budget = parseBudget(now) ?? parseBudget(all)
+  const noBudgetLimit = /\b(no budget limit|no limit|budget limit na|budget ekak na)\b/.test(now)
+  const budget = noBudgetLimit ? undefined : parseBudget(now) ?? parseBudget(all)
   const emotional = /\b(broke up|breakup|sorry|apology|forgive|sad|upset|heartbroken|duken|duka|tharaha|yalu karaganna|yalukaraganna)\b/.test(all)
   const gift = /\b(gift|send|surprise|girlfriend|wife|birthday|anniversary|eyata|kellawa|recipient|denna)\b/.test(all)
   const self = /\b(for myself|self shopping|weekly|grocer(?:y|ies)|daily essentials?|rice|milk|phone charger|charger|electronics?|home item|room item|mata ganna|mage gedarata)\b/.test(all)
+  const simple = /\b(simpler options?|simple|cheaper|low budget|aduma|adu ganan|budget option)\b/.test(now)
   let intent: Intent = 'unknown'
   if (emotional && gift) intent = 'emotional_gift'
   else if (self && !gift) intent = 'self_shop'
@@ -102,6 +105,7 @@ function classify(text: string, messages?: ChatTurn[]): Slots {
     recipient,
     budget,
     mood: emotional ? 'sad' : recipient === 'girlfriend' || recipient === 'wife' || recipient === 'partner' ? 'romantic' : self ? 'practical' : undefined,
+    simple,
     broad: (intent === 'gift_shop' || intent === 'emotional_gift') && (!category || category === 'gift'),
   }
 }
@@ -160,7 +164,7 @@ function query(slots: Slots) {
     if (slots.category === 'home') return 'useful home room item organizer lamp kitchen'
     return 'daily essentials groceries electronics home items'
   }
-  if (slots.category === 'chocolate') return 'chocolate gift for her cadbury ferrero hamper'
+  if (slots.category === 'chocolate') return slots.simple ? 'cadbury kandos toblerone kit kat chocolate' : 'chocolate gift for her cadbury ferrero hamper'
   if (slots.category === 'flowers') return 'rose flowers bouquet'
   if (slots.category === 'note_card') return 'greeting card note card apology card'
   if (slots.category === 'cake') return 'birthday cake'
@@ -170,7 +174,7 @@ function query(slots: Slots) {
 }
 
 function backupQuery(slots: Slots) {
-  if (slots.category === 'chocolate') return 'chocolate hamper bouquet gift box'
+  if (slots.category === 'chocolate') return slots.simple ? 'chocolate cadbury kandos kit kat' : 'chocolate hamper bouquet gift box'
   if (slots.category === 'flowers') return 'flowers rose bouquet'
   if (slots.category === 'groceries') return 'groceries essentials rice dhal milk'
   if (slots.category === 'electronics') return 'charger adapter cable power bank'
@@ -244,8 +248,19 @@ function context(slots: Slots) {
   return 'Recommended picks'
 }
 
+function budgetRaiseAskPayload(chatLang: ChatLang): ChatPayload {
+  if (chatLang === 'singlish' || chatLang === 'si') return { type: 'chat', text: 'Hari, budget eka wadi karamu. New budget eka kiyada? Rs. 10000, Rs. 15000 wage kiyannako.', chips: ['Rs. 10000', 'Rs. 15000', 'No budget limit'] }
+  if (chatLang === 'tanglish' || chatLang === 'ta') return { type: 'chat', text: 'Seri, budget increase pannalam. New budget evlo? Rs. 10000, Rs. 15000 madhiri sollunga.', chips: ['Rs. 10000', 'Rs. 15000', 'No budget limit'] }
+  return { type: 'chat', text: 'Sure, let us raise it. What new budget should I use? For example Rs. 10,000 or Rs. 15,000.', chips: ['Rs. 10000', 'Rs. 15000', 'No budget limit'] }
+}
+
 function budgetFailurePayload(slots: Slots, chatLang: ChatLang): ChatPayload {
   const budget = slots.budget ? 'Rs. ' + slots.budget.toLocaleString() : 'that budget'
+  if (slots.simple) {
+    if (chatLang === 'singlish' || chatLang === 'si') return { type: 'chat', text: budget + ' athule cheaper chocolate options baluwath proper gift widihata denna hoda ekak hambune na. Methana honest best move eka budget eka wadi karana eka, nathnam flowers/card wage simple gift ekakata maru wena eka.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
+    if (chatLang === 'tanglish' || chatLang === 'ta') return { type: 'chat', text: budget + ' kulla cheaper chocolate options paathalum proper gift-a kudukka nalla option kidaikkala. Best move: budget increase pannunga, illa flowers/card side-ku maaralam.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
+    return { type: 'chat', text: 'I checked cheaper chocolate options too, but I still cannot find a proper gift-quality pick within ' + budget + '. Best move: raise the budget a bit or switch to flowers/card.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
+  }
   if (chatLang === 'singlish' || chatLang === 'si') {
     return {
       type: 'chat',
@@ -281,6 +296,10 @@ export async function runAgenticShoppingPipeline(opts: {
   emitStatus: StatusEmitter
   messages?: ChatTurn[]
 }): Promise<ChatPayload | null> {
+  const normalizedText = normalize(opts.text)
+  const wantsRaiseBudget = /\b(raise budget|increase budget|budget eka wadi|budget wadi|wadi karanna|budget increase)\b/.test(normalizedText)
+  if (wantsRaiseBudget && !parseBudget(normalizedText)) return budgetRaiseAskPayload(opts.chatLang)
+
   const slots = classify(opts.text, opts.messages)
   if (slots.intent === 'unknown') return runAgenticShoppingShortcut(opts)
   if (slots.broad) return askPayload(slots, opts.chatLang)

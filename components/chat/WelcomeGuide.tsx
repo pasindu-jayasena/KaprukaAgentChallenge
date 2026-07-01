@@ -6,6 +6,7 @@ import { Gift, HeartHandshake, ShoppingBasket, PlugZap, Truck, X } from 'lucide-
 
 interface Props {
   onPick?: (prompt: string) => void
+  disabled?: boolean
 }
 
 const STARTERS = [
@@ -41,16 +42,18 @@ const STARTERS = [
   },
 ]
 
-export function WelcomeGuide({ onPick }: Props) {
+export function WelcomeGuide({ onPick, disabled = false }: Props) {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    if (disabled) return
+
     const dismissed = localStorage.getItem('anu-welcome-dismissed')
     if (!dismissed) {
       const timer = setTimeout(() => setVisible(true), 700)
       return () => clearTimeout(timer)
     }
-  }, [])
+  }, [disabled])
 
   const dismiss = () => {
     setVisible(false)
@@ -64,7 +67,7 @@ export function WelcomeGuide({ onPick }: Props) {
 
   return (
     <AnimatePresence>
-      {visible && (
+      {visible && !disabled && (
         <motion.div
           initial={{ opacity: 0, y: -14, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -122,3 +125,4 @@ export function WelcomeGuide({ onPick }: Props) {
     </AnimatePresence>
   )
 }
+

@@ -48,9 +48,14 @@ function memory(messages?: ChatTurn[]) {
 }
 
 function parseBudget(text: string) {
-  const match = normalize(text).replace(/,/g, '').match(/(?:rs\.?|lkr|under|below|budget|yata|adu|less than|up to)\s*(\d{3,7})|\b(\d{3,7})\b\s*(?:rs\.?|lkr|budget|yata|under)/i)
-  const value = Number(match?.[1] ?? match?.[2] ?? 0)
-  return Number.isFinite(value) && value > 0 ? value : undefined
+  const normalized = normalize(text).replace(/,/g, '')
+  const explicit = normalized.match(/(?:rs\.?|lkr|under|below|budget|yata|adu|less than|up to)\s*(\d{3,7})|\b(\d{3,7})\b\s*(?:rs\.?|lkr|budget|yata|under)/i)
+  const explicitValue = Number(explicit?.[1] ?? explicit?.[2] ?? 0)
+  if (Number.isFinite(explicitValue) && explicitValue > 0) return explicitValue
+
+  const bareNumbers = [...normalized.matchAll(/\b(\d{3,7})\b/g)].map((m) => Number(m[1]))
+  const likelyBudget = bareNumbers.find((n) => n >= 500 && n <= 500000)
+  return likelyBudget && Number.isFinite(likelyBudget) ? likelyBudget : undefined
 }
 
 function categoryOf(text: string): Category | undefined {
@@ -182,6 +187,7 @@ function toProducts(results: SearchProduct[], slots: Slots) {
   const seen = new Set<string>()
   return results
     .filter((p) => p.id && p.name && p.in_stock !== false)
+    .filter((p) => !slots.budget || priceOf(p.price) <= slots.budget)
     .map((p, index) => ({
       id: String(p.id),
       name: String(p.name),
@@ -238,6 +244,29 @@ function context(slots: Slots) {
   return 'Recommended picks'
 }
 
+function budgetFailurePayload(slots: Slots, chatLang: ChatLang): ChatPayload {
+  const budget = slots.budget ? 'Rs. ' + slots.budget.toLocaleString() : 'that budget'
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    return {
+      type: 'chat',
+      text: budget + ' athule proper gift-quality options hambune na. Budget eka poddak wadi karannada, nathnam simpler chocolate options balannada?',
+      chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+    }
+  }
+  if (chatLang === 'tanglish' || chatLang === 'ta') {
+    return {
+      type: 'chat',
+      text: budget + ' kulla proper gift-quality options kidaikkala. Budget konjam increase pannalama, illa simpler options paakalama?',
+      chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+    }
+  }
+  return {
+    type: 'chat',
+    text: 'I could not find proper gift-quality options within ' + budget + '. Want me to raise the budget a bit or show simpler alternatives?',
+    chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+  }
+}
+
 function chips(slots: Slots) {
   if (slots.intent === 'self_shop') return ['Keep under budget', 'Add snacks', 'Checkout now']
   if (slots.category === 'chocolate') return ['Add flowers', 'Add note card', 'Under Rs. 5000']
@@ -264,6 +293,7 @@ export async function runAgenticShoppingPipeline(opts: {
     filtered = [...filtered, ...backup.filter((p) => matches(p, slots))]
   }
   const products = toProducts(filtered, slots)
+  if (!products.length && slots.budget) return budgetFailurePayload(slots, opts.chatLang)
   if (!products.length) return runAgenticShoppingShortcut(opts)
   const total = products.reduce((sum, p) => sum + p.price, 0)
   return {
@@ -273,3 +303,4 @@ export async function runAgenticShoppingPipeline(opts: {
     chips: chips(slots),
   }
 }
+

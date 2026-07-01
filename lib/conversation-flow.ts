@@ -1,4 +1,5 @@
 import { DEFAULT_SENDER_EMAIL } from '@/lib/checkout-profile'
+import { isLikelyRecipientPlaceholder } from '@/lib/checkout-validation'
 import type { CartItem, ChatLang, ChatPayload, CheckoutDetailsInput } from '@/types'
 
 interface ChatTurn {
@@ -61,6 +62,9 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
   if (/\b(order number|tracking number|send me your kapruka order|track karanna order number|order track panna order number)\b/.test(last)) {
     return 'tracking_collecting'
   }
+  if (/\b(recipient address is required|recipient phone number looks invalid|recipient actual name is required|delivery date is required|sender name is required)\b/.test(last)) {
+    return 'checkout_collecting'
+  }
   if (/\b(payment link|order ready for payment|complete the payment|thank you for choosing kapruka)\b/.test(recent)) {
     return 'paid_or_payment_link'
   }
@@ -76,8 +80,9 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
 }
 
 function looksLikeRecipientName(text: string) {
-  const t = clean(text)
+  const t = clean(text).replace(/^(for|to)\s+(my|the)?\s*/i, '').trim()
   if (!t || t.length < 2) return false
+  if (isLikelyRecipientPlaceholder(t)) return false
   if (/\d/.test(t)) return false
   if (/\b(checkout|track|order|phone|address|city|date)\b/.test(t)) return false
   return t.split(/\s+/).length <= 4
@@ -145,6 +150,12 @@ function extractAddress(text: string, phone?: string, city?: string) {
   return value
 }
 
+function hasFullAddress(address?: string) {
+  const value = String(address ?? '').trim()
+  const compact = value.replace(/[^a-z0-9]/gi, '')
+  return value.length >= 8 && compact.length >= 5
+}
+
 function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText: string) {
   const ask = clean(assistantText)
   const text = userText.trim()
@@ -198,17 +209,20 @@ function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
   if (chatLang === 'singlish' || chatLang === 'si') {
     if (missing === 'name') return 'Checkout karanna kalin actual recipient name eka denna. Gift eka receive karanne katada?'
     if (missing === 'phone') return `Got it. ${name} ge phone number, delivery address, city eka ewannako.`
+    if (missing === 'address') return 'Address eka poddak madi. House number, road/lane name ekka full delivery address eka ewannako.'
     if (missing === 'date') return 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
     return 'Last step eka: sender name eka ewannako. Email nathnam guest email use karannam.'
   }
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     if (missing === 'name') return 'Checkout panna actual recipient name venum. Yaarukku deliver panna?'
     if (missing === 'phone') return `Got it. ${name} phone number, delivery address, city anuppunga.`
+    if (missing === 'address') return 'Address konjam short-a irukku. House number, road/lane name oda full delivery address anuppunga.'
     if (missing === 'date') return 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
     return 'Last step: sender name anuppunga. Email illena guest email use pannuren.'
   }
   if (missing === 'name') return 'Sure. Who should receive this order? Please send the actual recipient name.'
   if (missing === 'phone') return `Got it. What is ${name}'s phone number, delivery address, and city?`
+  if (missing === 'address') return 'That address is a bit too short. Please send the full delivery address with house number and road or lane name.'
   if (missing === 'date') return 'What delivery date should I use? You can say tomorrow or send a specific date.'
   return 'Last step: who is sending this? Send your sender name; email is optional.'
 }
@@ -224,6 +238,7 @@ export function continueCheckoutCollection(
   const missing =
     !draft.recipientName ? 'name' :
     !draft.phone || !draft.address || !draft.city ? 'phone' :
+    !hasFullAddress(draft.address) ? 'address' :
     !draft.date ? 'date' :
     !draft.senderName ? 'sender' :
     null
@@ -253,3 +268,4 @@ export function continueCheckoutCollection(
     },
   }
 }
+

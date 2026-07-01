@@ -50,6 +50,13 @@ function getGreeting(uiLang: string): string {
   return ANU_GREETINGS.en
 }
 
+function isCheckoutCollectionText(text: string) {
+  return /\b(actual recipient|who should receive|recipient name|receive this order|phone number|delivery address|full delivery address|delivery date|sender name|who is sending|checkout karanna|ewannako|anuppunga|address eka poddak madi|address is a bit too short|recipient address is required)\b/i.test(text)
+}
+
+function isFlowPayload(payload: ChatPayload | undefined) {
+  return payload?.type === 'order_preview' || payload?.type === 'checkout' || payload?.type === 'order_tracking'
+}
 function AnuChatInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -347,8 +354,15 @@ function AnuChatInner() {
         const chipSource =
           payload && 'chips' in payload ? payload.chips : undefined
         const inferred = inferChipsFromAssistantText(displayText, uiLang)
+        const checkoutCollection = payload?.type === 'chat' && isCheckoutCollectionText(displayText)
         if (payload?.type === 'checkout') {
           setSuggestedChips(getAfterCheckoutChips(uiLang))
+        } else if (payload?.type === 'order_preview') {
+          setSuggestedChips(chipSource ?? [])
+        } else if (payload?.type === 'order_tracking') {
+          setSuggestedChips(chipSource ?? [])
+        } else if (checkoutCollection) {
+          setSuggestedChips(chipSource ?? [])
         } else if (payload?.type === 'plan_board' && !(payload as { plan?: PlanBoard }).plan?.occasion) {
           setSuggestedChips(mergeChips(chipSource, getOccasionChips(uiLang)))
         } else {
@@ -506,9 +520,11 @@ function AnuChatInner() {
           }
           setChatMessages((prev) => {
             const next = [...prev, errMsg]
-            void persistSession({ messages: next })
+            void persistSession({ messages: next, journeyStep: 2 })
             return next
           })
+          setJourneyStep(2)
+          setSuggestedChips([])
         }
       } catch {
         const errMsg: ChatMessage = {
@@ -516,6 +532,8 @@ function AnuChatInner() {
           content: 'A network error occurred. Please try again.',
         }
         setChatMessages((prev) => [...prev, errMsg])
+        setJourneyStep(2)
+        setSuggestedChips([])
       } finally {
         setConfirmingOrder(false)
       }
@@ -573,9 +591,11 @@ function AnuChatInner() {
           }
           setChatMessages((prev) => {
             const next = [...prev, errMsg]
-            void persistSession({ messages: next })
+            void persistSession({ messages: next, journeyStep: 2 })
             return next
           })
+          setJourneyStep(2)
+          setSuggestedChips([])
         }
       } catch {
         const errMsg: ChatMessage = {
@@ -583,6 +603,8 @@ function AnuChatInner() {
           content: 'A network error occurred. Please try again.',
         }
         setChatMessages((prev) => [...prev, errMsg])
+        setJourneyStep(2)
+        setSuggestedChips([])
       } finally {
         setConfirmingOrder(false)
       }
@@ -655,7 +677,7 @@ function AnuChatInner() {
       <div className="chat-layout mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden">
         {/* Messages */}
         <div className="chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4 sm:px-4 sm:py-5">
-          <WelcomeGuide onPick={sendMessage} />
+          <WelcomeGuide onPick={sendMessage} disabled={searchParams.get('intent') === 'track' || journeyStep >= 2 || chatMessages.some((m) => isFlowPayload(m.payload))} />
           {chatMessages.map((msg, i) => {
             const isLastStreaming = msg.isStreaming && i === chatMessages.length - 1
             if (isLastStreaming && isStreaming && !msg.content) {
@@ -822,3 +844,4 @@ export function AnuChat() {
     </Suspense>
   )
 }
+

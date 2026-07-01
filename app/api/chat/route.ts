@@ -13,7 +13,7 @@ import { isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
 import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
-import { runAgenticShoppingShortcut } from '@/lib/agentic-shopping'
+import { runAgenticShoppingPipeline } from '@/lib/agent-orchestrator'
 import {
   getTrackingDecision,
   normalizeTrackingResponse,
@@ -332,7 +332,7 @@ export async function POST(req: Request) {
           )
 
         if (lastUserMessage && !checkoutDetails) {
-          const shortcutPayload = await runAgenticShoppingShortcut({
+          const shortcutPayload = await runAgenticShoppingPipeline({
             text: lastUserMessage.content,
             chatLang,
             mcp,

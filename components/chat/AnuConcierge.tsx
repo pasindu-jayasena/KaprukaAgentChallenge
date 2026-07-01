@@ -310,6 +310,8 @@ function AnuChatInner() {
                   displayText =
                     payload.text ??
                     'Please review your order below — tap Confirm when ready to get your payment link.'
+                else if (payload.type === 'order_tracking')
+                  displayText = payload.rawText ?? 'I found the order status.'
                 else displayText = 'Got it!'
                 if ('orderResult' in evt.payload && evt.payload.orderResult) {
                   payload = {

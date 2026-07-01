@@ -1,6 +1,7 @@
 import type { ChatLang, ChatPayload, OrderTracking } from '@/types'
 
 export const DEMO_TRACKING_REF = process.env.NEXT_PUBLIC_DEMO_TRACKING_REF || 'VPAY827982BA'
+export const DEMO_TRACKING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO_TRACKING === 'true'
 
 type TrackingDecision =
   | { action: 'ignore' }
@@ -53,8 +54,6 @@ function hasTamil(text: string) {
 }
 
 export function extractTrackingOrderNumber(input: string): string | null {
-  const demo = new RegExp('\\b' + DEMO_TRACKING_REF + '\\b', 'i')
-  if (demo.test(input)) return DEMO_TRACKING_REF
   const candidates = input.toUpperCase().match(/\b[A-Z]{2,8}\d[A-Z0-9]{5,}\b|\b\d{6,}\b/g) ?? []
   return candidates[0] ?? null
 }
@@ -63,7 +62,11 @@ export function getTrackingDecision(input: string): TrackingDecision {
   const text = input.trim()
   if (!text) return { action: 'ignore' }
 
-  if (/\btry\s+demo\s+order\b/i.test(text)) return { action: 'track', orderNumber: DEMO_TRACKING_REF }
+  if (/\btry\s+demo\s+order\b/i.test(text)) {
+    return DEMO_TRACKING_ENABLED
+      ? { action: 'track', orderNumber: DEMO_TRACKING_REF }
+      : { action: 'ask' }
+  }
 
   const orderNumber = extractTrackingOrderNumber(text)
   if (orderNumber) return { action: 'track', orderNumber }
@@ -87,24 +90,31 @@ export function getTrackingDecision(input: string): TrackingDecision {
 }
 
 export function trackingAskPayload(chatLang: ChatLang): ChatPayload {
+  const demoChips = DEMO_TRACKING_ENABLED ? ['Try demo order', DEMO_TRACKING_REF] : []
   if (chatLang === 'singlish' || chatLang === 'si') {
     return {
       type: 'chat',
-      text: 'Order eka track karanna order number eka denna. Demo balanna one nam Try demo order tap karanna.',
-      chips: ['Try demo order', DEMO_TRACKING_REF, 'Shop again'],
+      text: DEMO_TRACKING_ENABLED
+        ? 'Order eka track karanna order number eka denna. Demo balanna one nam Try demo order tap karanna.'
+        : 'Order eka track karanna order number eka ewannako. Mata eka balala current status eka kiyanna puluwan.',
+      chips: [...demoChips, 'Shop again', 'Need another gift'],
     }
   }
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     return {
       type: 'chat',
-      text: 'Order track panna order number kudunga. Demo paakanumna Try demo order tap pannunga.',
-      chips: ['Try demo order', DEMO_TRACKING_REF, 'Shop again'],
+      text: DEMO_TRACKING_ENABLED
+        ? 'Order track panna order number kudunga. Demo paakanumna Try demo order tap pannunga.'
+        : 'Order track panna order number anuppunga. Naan status check panni solluren.',
+      chips: [...demoChips, 'Shop again', 'Need another gift'],
     }
   }
   return {
     type: 'chat',
-    text: 'Sure. Send me the order number and I will check it. For the demo, tap Try demo order.',
-    chips: ['Try demo order', DEMO_TRACKING_REF, 'Shop again'],
+    text: DEMO_TRACKING_ENABLED
+      ? 'Sure. Send me the order number and I will check it. For the demo, tap Try demo order.'
+      : 'Sure. Please send your order number and I will check the current status.',
+    chips: [...demoChips, 'Shop again', 'Need another gift'],
   }
 }
 
@@ -211,5 +221,8 @@ export function trackingErrorPayload(orderNumber: string, chatLang: ChatLang): C
       : chatLang === 'tanglish' || chatLang === 'ta'
       ? orderNumber + ' track panna mudiyala. Order number sariyaa irukka check panni anuppunga.'
       : 'I could not find tracking for ' + orderNumber + '. Please check the order number and send it again.'
-  return { type: 'chat', text, chips: ['Try demo order', 'Track another order', 'Shop again'] }
+  const chips = DEMO_TRACKING_ENABLED
+    ? ['Try demo order', 'Track another order', 'Shop again']
+    : ['Track another order', 'Shop again', 'Need another gift']
+  return { type: 'chat', text, chips }
 }

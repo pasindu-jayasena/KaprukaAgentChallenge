@@ -112,7 +112,8 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
     if (!pendingDetails || checkoutItems.length === 0) return
     setProcessing(true)
     setCheckoutError(null)
-    try {
+
+    const doCheckout = async (): Promise<{ res: Response; data: CheckoutFailureResponse & { orderResult?: OrderResult; recipient?: Record<string, string>; subtotal?: number; deliveryFee?: number; total?: number; giftMessage?: string; senderName?: string; senderEmail?: string; specialInstructions?: string; retryable?: boolean } }> => {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,7 +127,24 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
         }),
       })
       const data = await res.json()
+      return { res, data }
+    }
+
+    try {
+      let { res, data } = await doCheckout()
       logCheckoutFailure('cart-confirm', res, data)
+
+      // Auto-retry once on transient upstream failures
+      if (!data.orderResult && (res.status === 502 || data.retryable)) {
+        setCheckoutError('Retrying order...')
+        await new Promise((r) => setTimeout(r, 1200))
+        const retry = await doCheckout()
+        res = retry.res
+        data = retry.data
+        logCheckoutFailure('cart-confirm-retry', res, data)
+        setCheckoutError(null)
+      }
+
       if (data.orderResult) {
         const snapshot = checkoutItems.map((i) => ({ ...i }))
         checkoutItems.forEach((i) => removeItem(i.id))
@@ -142,7 +160,7 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
             url: i.url,
           })),
           cartRestore: snapshot,
-          recipient: data.recipient,
+          recipient: data.recipient as CheckoutSuccessPayload['recipient'],
           subtotal: data.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
           deliveryFee: data.deliveryFee,
           total: data.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),

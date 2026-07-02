@@ -505,81 +505,10 @@ function AnuChatInner() {
     [uiLang, persistSession, clearCheckedOutCart]
   )
 
-  const handlePlanBoardConfirm = useCallback(
-    async (data: CheckoutDetailsInput) => {
-      if (cartItems.length === 0 || confirmingOrder) return
-      setConfirmingOrder(true)
-      try {
-        const res = await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cart: cartItems,
-            recipient: data.recipient,
-            senderName: data.senderName,
-            senderEmail: data.senderEmail,
-            giftMessage: data.giftMessage,
-            specialInstructions: data.specialInstructions,
-          }),
-        })
-        const checkout = await res.json()
-        logCheckoutFailure('chat-plan-confirm', res, checkout)
-        if (checkout.orderResult) {
-          const snapshot = cartItems.map((i) => ({ ...i }))
-          handleCheckoutSuccess({
-            orderResult: checkout.orderResult as OrderResult,
-            items: snapshot.map((i) => ({
-              id: i.id,
-              name: i.name,
-              price: i.price,
-              quantity: i.quantity,
-              image: i.image,
-              url: i.url,
-            })),
-            cartRestore: snapshot,
-            recipient: checkout.recipient,
-            subtotal:
-              checkout.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
-            deliveryFee: checkout.deliveryFee,
-            total: checkout.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
-            giftMessage: checkout.giftMessage,
-            senderName: checkout.senderName,
-            senderEmail: checkout.senderEmail,
-            specialInstructions: checkout.specialInstructions,
-          })
-        } else {
-          const errMsg: ChatMessage = {
-            role: 'assistant',
-            content: checkoutFailureMessage(checkout),
-          }
-          setChatMessages((prev) => {
-            const next = [...prev, errMsg]
-            void persistSession({ messages: next, journeyStep: 2 })
-            return next
-          })
-          setJourneyStep(2)
-          setSuggestedChips([])
-        }
-      } catch {
-        const errMsg: ChatMessage = {
-          role: 'assistant',
-          content: 'A network error occurred. Please try again.',
-        }
-        setChatMessages((prev) => [...prev, errMsg])
-        setJourneyStep(2)
-        setSuggestedChips([])
-      } finally {
-        setConfirmingOrder(false)
-      }
-    },
-    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession]
-  )
-
-  const handleOrderPreviewConfirm = useCallback(
-    async (details: CheckoutDetailsInput) => {
-      if (cartItems.length === 0 || confirmingOrder) return
-      setConfirmingOrder(true)
-      try {
+  /** Shared checkout-with-retry: fires checkout API, auto-retries once on transient 502 */
+  const runCheckoutWithRetry = useCallback(
+    async (details: CheckoutDetailsInput, source: string) => {
+      const doCall = async () => {
         const res = await fetch('/api/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -593,35 +522,51 @@ function AnuChatInner() {
           }),
         })
         const data = await res.json()
-        logCheckoutFailure('chat-preview-confirm', res, data)
-        if (data.orderResult) {
+        return { res, data }
+      }
+
+      let { res, data } = await doCall()
+      logCheckoutFailure(source, res, data)
+
+      // Auto-retry once on transient upstream failures
+      if (!data.orderResult && (res.status === 502 || data.retryable)) {
+        console.log(`[${source}] Retrying checkout after transient failure...`)
+        await new Promise((r) => setTimeout(r, 1200))
+        const retry = await doCall()
+        res = retry.res
+        data = retry.data
+        logCheckoutFailure(`${source}-retry`, res, data)
+      }
+
+      return data
+    },
+    [cartItems]
+  )
+
+  const handlePlanBoardConfirm = useCallback(
+    async (data: CheckoutDetailsInput) => {
+      if (cartItems.length === 0 || confirmingOrder) return
+      setConfirmingOrder(true)
+      try {
+        const checkout = await runCheckoutWithRetry(data, 'chat-plan-confirm')
+        if (checkout.orderResult) {
           const snapshot = cartItems.map((i) => ({ ...i }))
           handleCheckoutSuccess({
-            orderResult: data.orderResult as OrderResult,
+            orderResult: checkout.orderResult as OrderResult,
             items: snapshot.map((i) => ({
-              id: i.id,
-              name: i.name,
-              price: i.price,
-              quantity: i.quantity,
-              image: i.image,
-              url: i.url,
+              id: i.id, name: i.name, price: i.price,
+              quantity: i.quantity, image: i.image, url: i.url,
             })),
             cartRestore: snapshot,
-            recipient: data.recipient,
-            subtotal:
-              data.subtotal ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
-            deliveryFee: data.deliveryFee,
-            total: data.total ?? snapshot.reduce((s, i) => s + i.price * i.quantity, 0),
-            giftMessage: data.giftMessage,
-            senderName: data.senderName,
-            senderEmail: data.senderEmail,
-            specialInstructions: data.specialInstructions,
+            recipient: checkout.recipient,
+            subtotal: checkout.subtotal ?? snapshot.reduce((s: number, i: CartItem) => s + i.price * i.quantity, 0),
+            deliveryFee: checkout.deliveryFee,
+            total: checkout.total ?? snapshot.reduce((s: number, i: CartItem) => s + i.price * i.quantity, 0),
+            giftMessage: checkout.giftMessage, senderName: checkout.senderName,
+            senderEmail: checkout.senderEmail, specialInstructions: checkout.specialInstructions,
           })
         } else {
-          const errMsg: ChatMessage = {
-            role: 'assistant',
-            content: checkoutFailureMessage(data),
-          }
+          const errMsg: ChatMessage = { role: 'assistant', content: checkoutFailureMessage(checkout) }
           setChatMessages((prev) => {
             const next = [...prev, errMsg]
             void persistSession({ messages: next, journeyStep: 2 })
@@ -631,18 +576,57 @@ function AnuChatInner() {
           setSuggestedChips([])
         }
       } catch {
-        const errMsg: ChatMessage = {
-          role: 'assistant',
-          content: 'A network error occurred. Please try again.',
-        }
-        setChatMessages((prev) => [...prev, errMsg])
+        setChatMessages((prev) => [...prev, { role: 'assistant', content: 'A network error occurred. Please try again.' } as ChatMessage])
         setJourneyStep(2)
         setSuggestedChips([])
       } finally {
         setConfirmingOrder(false)
       }
     },
-    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession]
+    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
+  )
+
+  const handleOrderPreviewConfirm = useCallback(
+    async (details: CheckoutDetailsInput) => {
+      if (cartItems.length === 0 || confirmingOrder) return
+      setConfirmingOrder(true)
+      try {
+        const data = await runCheckoutWithRetry(details, 'chat-preview-confirm')
+        if (data.orderResult) {
+          const snapshot = cartItems.map((i) => ({ ...i }))
+          handleCheckoutSuccess({
+            orderResult: data.orderResult as OrderResult,
+            items: snapshot.map((i) => ({
+              id: i.id, name: i.name, price: i.price,
+              quantity: i.quantity, image: i.image, url: i.url,
+            })),
+            cartRestore: snapshot,
+            recipient: data.recipient,
+            subtotal: data.subtotal ?? snapshot.reduce((s: number, i: CartItem) => s + i.price * i.quantity, 0),
+            deliveryFee: data.deliveryFee,
+            total: data.total ?? snapshot.reduce((s: number, i: CartItem) => s + i.price * i.quantity, 0),
+            giftMessage: data.giftMessage, senderName: data.senderName,
+            senderEmail: data.senderEmail, specialInstructions: data.specialInstructions,
+          })
+        } else {
+          const errMsg: ChatMessage = { role: 'assistant', content: checkoutFailureMessage(data) }
+          setChatMessages((prev) => {
+            const next = [...prev, errMsg]
+            void persistSession({ messages: next, journeyStep: 2 })
+            return next
+          })
+          setJourneyStep(2)
+          setSuggestedChips([])
+        }
+      } catch {
+        setChatMessages((prev) => [...prev, { role: 'assistant', content: 'A network error occurred. Please try again.' } as ChatMessage])
+        setJourneyStep(2)
+        setSuggestedChips([])
+      } finally {
+        setConfirmingOrder(false)
+      }
+    },
+    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
   )
 
   const handleAddToCart = useCallback(

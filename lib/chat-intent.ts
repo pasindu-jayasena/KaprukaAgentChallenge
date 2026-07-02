@@ -56,10 +56,27 @@ export function productsRecentlyShown(messages: ChatTurn[]): boolean {
   )
 }
 
+export function isCheckoutFailureFollowUp(userMessage: string, messages: ChatTurn[]): boolean {
+  const msg = userMessage.trim()
+  if (!msg) return false
+
+  const recentAssistant = recentAssistantLines(messages, 5).join(' ')
+  const recentCheckoutFailure =
+    /could not get a payment link|payment link.*try again|checkout failed|verify delivery details|order could not be created|placing that order/i.test(
+      recentAssistant
+    )
+  if (!recentCheckoutFailure) return false
+
+  return /\b(what'?s|what is|why|issue|problem|reason|failed|fail|error|wrong|mokakda|ai|eyi|enna problem|enna issue)\b/i.test(
+    msg
+  )
+}
 /** True when the user is asking a question — not requesting new product options. */
 export function isNonShoppingTurn(userMessage: string, messages: ChatTurn[]): boolean {
   const msg = userMessage.trim()
   if (!msg || msg.includes('CHECKOUT_DETAILS:')) return false
+
+  if (isCheckoutFailureFollowUp(msg, messages)) return true
 
   const shoppingVerb = SHOPPING_PATTERNS.some((p) => p.test(msg))
   const productMention = PRODUCT_NOUN.test(msg)
@@ -96,6 +113,15 @@ export function buildIntentBlock(messages: ChatTurn[]): string {
     .reverse()
     .find((m) => m.role === 'user' && !m.content.includes('CHECKOUT_DETAILS:'))
   if (!lastUser) return ''
+
+  if (isCheckoutFailureFollowUp(lastUser.content, messages)) {
+    return [
+      'THIS TURN - CHECKOUT FAILURE EXPLANATION',
+      'The customer is asking why the payment link/order failed. Answer from recent checkout context, not as a new shopping request.',
+      'Explain honestly that Kapruka did not return a valid payment link/order reference, so the safest next step is to verify phone, full address, city, delivery date, item availability, then try Confirm again.',
+      'Do NOT search products. Do NOT ask for a new gift budget.',
+    ].join('\n')
+  }
 
   if (isNonShoppingTurn(lastUser.content, messages)) {
     return [

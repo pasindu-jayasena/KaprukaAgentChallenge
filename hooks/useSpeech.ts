@@ -35,10 +35,8 @@ declare global {
 
 function detectSpeechSupport(): boolean {
   if (typeof window === 'undefined') return false
-  const canRecord =
-    !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-  return canRecord || !!SR
+  return !!SR
 }
 
 function subscribeSpeechSupport(onChange: () => void) {
@@ -54,141 +52,51 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
     detectSpeechSupport,
     () => false
   )
-  const [transcribing, setTranscribing] = useState(false)
 
   const recRef = useRef<SpeechRecognition | null>(null)
-  const mediaRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
-  const modeRef = useRef<'groq' | 'browser'>('groq')
 
   useEffect(() => {
-    const canRecord =
-      typeof window !== 'undefined' &&
-      !!navigator.mediaDevices?.getUserMedia &&
-      typeof MediaRecorder !== 'undefined'
+    if (typeof window === 'undefined') return
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return
 
-    if (canRecord) {
-      modeRef.current = 'groq'
-    } else if (SR) {
-      modeRef.current = 'browser'
-      const rec = new SR()
-      rec.continuous = false
-      rec.interimResults = true
-      rec.onstart = () => setListening(true)
-      rec.onend = () => setListening(false)
-      rec.onerror = () => setListening(false)
-      rec.onresult = (e) => {
-        const text = Array.from(e.results)
-          .map((r) => r[0].transcript)
-          .join('')
-        onResult(text)
-      }
-      recRef.current = rec
-      return () => rec.abort()
+    const rec = new SR()
+    rec.continuous = false
+    rec.interimResults = true
+    rec.lang = BROWSER_LANG[uiLang] || 'en-LK'
+    rec.onstart = () => setListening(true)
+    rec.onend = () => setListening(false)
+    rec.onerror = () => setListening(false)
+    rec.onresult = (e) => {
+      const finalText = Array.from(e.results)
+        .filter((r) => r.isFinal)
+        .map((r) => r[0]?.transcript ?? '')
+        .join(' ')
+        .trim()
+
+      if (finalText) onResult(finalText)
     }
-  }, [onResult])
 
-  const stopStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-  }, [])
-
-  const transcribeWithGroq = useCallback(
-    async (blob: Blob) => {
-      setTranscribing(true)
-      try {
-        const form = new FormData()
-        form.append('file', blob, 'audio.webm')
-        form.append('language', uiLang)
-
-        const res = await fetch('/api/transcribe', { method: 'POST', body: form })
-        if (!res.ok) throw new Error('transcribe failed')
-
-        const data = (await res.json()) as { text?: string }
-        if (data.text) onResult(data.text)
-      } catch {
-        /* fallback below */
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-        if (SR) {
-          modeRef.current = 'browser'
-          const rec = new SR()
-          rec.continuous = false
-          rec.interimResults = false
-          rec.lang = BROWSER_LANG[uiLang] || 'en-LK'
-          rec.onresult = (e) => {
-            const text = Array.from(e.results)
-              .map((r) => r[0].transcript)
-              .join('')
-            onResult(text)
-          }
-          rec.start()
-        }
-      } finally {
-        setTranscribing(false)
-        setListening(false)
-      }
-    },
-    [uiLang, onResult]
-  )
-
-  const startGroqRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      chunksRef.current = []
-
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-      mediaRef.current = recorder
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        stopStream()
-        if (blob.size > 0) transcribeWithGroq(blob)
-        else setListening(false)
-      }
-
-      recorder.start()
-      setListening(true)
-    } catch {
-      setListening(false)
-      stopStream()
-    }
-  }, [stopStream, transcribeWithGroq])
-
-  const stopGroqRecording = useCallback(() => {
-    const rec = mediaRef.current
-    if (rec && rec.state !== 'inactive') rec.stop()
-    else setListening(false)
-  }, [])
+    recRef.current = rec
+    return () => rec.abort()
+  }, [uiLang, onResult])
 
   const toggle = useCallback(() => {
-    if (transcribing) return
-
-    if (modeRef.current === 'groq') {
-      if (listening) stopGroqRecording()
-      else startGroqRecording()
-      return
-    }
-
     const rec = recRef.current
     if (!rec) return
+
     if (listening) {
       rec.stop()
       return
     }
+
     rec.lang = BROWSER_LANG[uiLang] || 'en-LK'
     try {
       rec.start()
     } catch {
       setListening(false)
     }
-  }, [listening, transcribing, uiLang, startGroqRecording, stopGroqRecording])
+  }, [listening, uiLang])
 
-  return { listening: listening || transcribing, supported, toggle }
+  return { listening, supported, toggle }
 }

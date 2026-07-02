@@ -28,7 +28,7 @@ export function ProgressInputBar({
 }: Props) {
   const [focused, setFocused] = useState(false)
   const handleSpeech = useCallback((text: string) => onChange(text), [onChange])
-  const { listening, toggle } = useSpeech(uiLang, handleSpeech)
+  const { listening, supported, toggle } = useSpeech(uiLang, handleSpeech)
 
   const progress = Math.min(100, (journeyStep / 4) * 100)
 
@@ -57,19 +57,21 @@ export function ProgressInputBar({
           />
 
           <div className="input-actions flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Voice input"
-              className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 sm:h-9 sm:w-9 ${
-                listening
-                  ? 'bg-kapruka-header text-white shadow-md'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--rail-hover)] hover:text-[var(--text-primary)]'
-              }`}
-              style={{ animation: listening ? 'agentPulse 1.4s ease-in-out infinite' : undefined }}
-            >
-              <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={1.9} />
-            </button>
+            {supported && (
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label="Voice input"
+                className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 sm:h-9 sm:w-9 ${
+                  listening
+                    ? 'bg-kapruka-header text-white shadow-md'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--rail-hover)] hover:text-[var(--text-primary)]'
+                }`}
+                style={{ animation: listening ? 'agentPulse 1.4s ease-in-out infinite' : undefined }}
+              >
+                <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={1.9} />
+              </button>
+            )}
             <button
               type="button"
               onClick={submit}

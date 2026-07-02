@@ -8,7 +8,8 @@ AI shopping assistant for Kapruka with a branded homepage and **Anu** chat conci
 - **Chat** (`/chat`): Product carousel, plan board, order confirm, payment slip, order tracking
 - **Languages**: UI in **English / සිංහල / தமிழ்**; chat mirrors user input (EN, SI, TA, Singlish, Tanglish)
 - **Cart**: Sidebar checkout with delivery preview
-- **AI**: Claude (primary) + Groq (backup & voice) + Kapruka MCP catalog/orders
+- **Voice**: Browser-native speech recognition and text-to-speech
+- **AI**: Claude (primary) + optional Groq chat backup + Kapruka MCP catalog/orders
 
 ## Setup
 
@@ -26,10 +27,10 @@ Open [http://localhost:3000](http://localhost:3000)
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `CLAUDE_API_KEY` | One of Claude or Groq | Primary chat brain |
+| `CLAUDE_API_KEY` | Yes | Primary chat brain |
 | `CLAUDE_BASE_URL` | No (default: tokenlb) | Claude API base URL |
 | `CLAUDE_MODEL` | No | Default: `claude-sonnet-4-6` |
-| `GROQ_API_KEY` | One of Claude or Groq | Backup chat + voice transcription |
+| `GROQ_API_KEY` | Optional | Backup chat only; voice uses browser APIs |
 | `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
 | `UPSTASH_REDIS_REST_URL` | **Production** | Persistent chat sessions |
 | `UPSTASH_REDIS_REST_TOKEN` | **Production** | Persistent chat sessions |
@@ -56,7 +57,7 @@ vercel env add UPSTASH_REDIS_REST_TOKEN production
 vercel --prod
 ```
 
-Ensure production env has at least **Claude or Groq** and **Upstash Redis** for sessions.
+Ensure production env has **Claude** and **Upstash Redis** for sessions. Groq is optional for chat fallback only.
 
 ## Project structure
 

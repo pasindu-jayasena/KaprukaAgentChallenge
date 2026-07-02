@@ -9,8 +9,8 @@ import { getCheckoutPreview } from '@/lib/checkout-preview'
 import { orderArgsToCheckoutDetails } from '@/lib/order-args'
 import { parseCheckoutDetails } from '@/lib/parse-checkout-details'
 import { messagesForModel } from '@/lib/conversation-context'
-import { isCheckoutFailureFollowUp, isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
+import { isNonShoppingTurn } from '@/lib/chat-intent'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
 import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
 import { runAgenticShoppingPipeline } from '@/lib/agent-orchestrator'
@@ -373,29 +373,10 @@ export async function POST(req: Request) {
 
         if (
           lastUserMessage &&
-          !checkoutDetails &&
-          !isNonShoppingTurn(lastUserMessage.content, messages) &&
-          !isCheckoutFailureFollowUp(lastUserMessage.content, messages)
-        ) {
-          const shortcutPayload = await runAgenticShoppingPipeline({
-            text: lastUserMessage.content,
-            chatLang,
-            mcp,
-            messages,
-            emitStatus: (name, args = {}) => emit({ type: 'status', ...statusLabel(name, args) }),
-          })
-
-          if (shortcutPayload) {
-            emit({ type: 'final', payload: shortcutPayload })
-            return
-          }
-        }
-
-        if (
-          (chatLang === 'singlish' || chatLang === 'tanglish' || chatLang === 'si' || explicitEnglishRequest || chatLang === 'en') &&
-          lastUserMessage &&
           !checkoutDetails
         ) {
+          // ─── FAST PATH 1: Direct replies for very short social phrases ───
+          // (greetings, thanks, "kohomada" etc. — instant, no LLM needed)
           const directReply =
             chatLang === 'tanglish'
               ? getTanglishDirectReply(lastUserMessage.content)
@@ -413,6 +394,21 @@ export async function POST(req: Request) {
                 chips: directReply.chips,
               },
             })
+            return
+          }
+
+          // ─── FAST PATH 2: Exact-match shopping (e.g. "show chocolates") ───
+          // For everything else, falls through to LLM
+          const shortcutPayload = await runAgenticShoppingPipeline({
+            text: lastUserMessage.content,
+            chatLang,
+            mcp,
+            messages,
+            emitStatus: (name, args = {}) => emit({ type: 'status', ...statusLabel(name, args) }),
+          })
+
+          if (shortcutPayload) {
+            emit({ type: 'final', payload: shortcutPayload })
             return
           }
         }

@@ -39,6 +39,14 @@ const REF_KEYS = new Set([
   'reference',
   'ref',
   'pnref',
+  'confirmation_number',
+  'confirmationnumber',
+  'booking_ref',
+  'bookingref',
+  'transaction_id',
+  'transactionid',
+  'invoice_id',
+  'invoiceid',
 ])
 
 const EXPIRES_KEYS = new Set(['expires_at', 'expiresat', 'expiry', 'expires'])
@@ -129,7 +137,14 @@ function findFailureMessage(obj: Record<string, unknown>) {
 }
 
 function looksLikePaymentUrl(value: string) {
-  return /^https?:\/\//i.test(value) && /kapruka|pay|checkout|order|payment/i.test(value)
+  // Accept any HTTPS URL from the Kapruka MCP response — the API only returns
+  // payment/checkout links, so strict keyword matching was causing false negatives
+  // when Kapruka's gateway URL format changed.
+  if (!/^https?:\/\//i.test(value)) return false
+  // Still reject obviously wrong URLs (social media, images, etc.)
+  if (/\.(jpg|jpeg|png|gif|svg|css|js)(\?|$)/i.test(value)) return false
+  if (/\b(facebook|twitter|instagram|youtube|whatsapp)\b/i.test(value)) return false
+  return true
 }
 
 function looksLikeRef(value: string) {
@@ -245,11 +260,16 @@ export function parseKaprukaOrderResponse(raw: string): OrderResult {
   finalizeTotals(merged)
 
   if (!merged.url && !merged.ref) {
+    console.error('[Kapruka order parse] No URL or ref found in raw response:', trimmed.slice(0, 500))
     const failure = extractFailureFromRaw(trimmed)
     const message = failure
       ? 'Order failed: ' + failure
       : 'Could not get a payment link from Kapruka. Please verify delivery details and try again.'
-    throw new KaprukaOrderParseError(message, trimmed)
+    const err = new KaprukaOrderParseError(message, trimmed)
+    // Tag transient errors so callers can retry
+    ;(err as KaprukaOrderParseError & { retryable?: boolean }).retryable =
+      !failure || /rate_limit|timeout|internal|unavailable|connection/i.test(failure)
+    throw err
   }
 
   return {

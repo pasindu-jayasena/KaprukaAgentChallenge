@@ -72,6 +72,12 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
     return 'checkout_review'
   }
 
+  // Budget negotiation — don't misclassify as checkout
+  const isBudgetNegotiation =
+    /\b(raise budget|increase budget|budget eka wadi|simpler options|cheaper|no budget limit|budget limit na|budget ekak na|budget increase|wadi karanna)\b/.test(recent) ||
+    /\b(could not find|hambune naha|hambune na|kidaikkala|gift.quality options)\b/.test(last)
+  if (isBudgetNegotiation) return 'shopping'
+
   const checkoutLanguage =
     /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|deliver to|delivery date|sender name|who is sending|checkout now|ready to pay)\b/.test(recent) ||
     /\b(checkout karannada|checkout pannalama|order eka receive karanne|gift eka katada)\b/.test(recent)

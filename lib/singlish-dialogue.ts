@@ -152,6 +152,33 @@ export function getSinglishDirectReply(input: string): SinglishDirectReply | nul
     }
   }
 
+  // Agreement responses — keep conversation moving
+  const agreementOnly = isShort(text, 4) && /^\s*(ow|hari|ok|okkoma|seri|yep|yes|ow hari|hari hari|hmm|okkoma hari)\s*$/i.test(text)
+  if (agreementOnly) {
+    return {
+      text: 'Shape! Mokakda next step eka? Gift ekak hoyanawada, nathnam oyata ganna deyak oneda?',
+      chips: ['Gift ekak', 'Mata ganna one', 'Groceries', 'Track order'],
+    }
+  }
+
+  // Disagreement / change request
+  const disagreement = isShort(text, 6) && /\b(epa|epai|vena ekak|vena de|change karanna|maru|maru karanna|vena option|wena ekak|wena de)\b/.test(text)
+  if (disagreement) {
+    return {
+      text: 'Hari, wena options balamu. Mokak vidihata wena karannada? Vena category ekakda, nathnam budget eka change karannada?',
+      chips: ['Show chocolates', 'Show flowers', 'Change budget', 'Under Rs. 5000'],
+    }
+  }
+
+  // Follow-up asking for more
+  const wantsMore = isShort(text, 4) && /^\s*(thawa|thawa tiyanawada|wena ekak|more|thawa options|thawa pennanna)\s*$/i.test(text)
+  if (wantsMore) {
+    return {
+      text: 'Hari, thawa options balamuda? Same category ekeda, nathnam vena mokak hari?',
+      chips: ['Same category', 'Show flowers', 'Show chocolates', 'Different gift'],
+    }
+  }
+
   return null
 }
 
@@ -245,6 +272,24 @@ export function getTanglishDirectReply(input: string): SinglishDirectReply | nul
     }
   }
 
+  // Agreement responses
+  const agreementOnly = isShort(text, 4) && /^\s*(seri|ok|aama|yep|yes|hmm|seri seri|seri da)\s*$/i.test(text)
+  if (agreementOnly) {
+    return {
+      text: 'Seri! Next step enna? Gift-a, illa ungalukku vaanganuma?',
+      chips: ['Gift venum', 'Enakku vaanganum', 'Groceries', 'Track order'],
+    }
+  }
+
+  // Disagreement / change request
+  const disagreement = isShort(text, 6) && /\b(venda|vena option|change|vera|vera option|maathu|maathi|vera edhu)\b/.test(text)
+  if (disagreement) {
+    return {
+      text: 'Seri, vera options paakalam. Enna madhiri maathanum? Vera category-aa, illa budget change-aa?',
+      chips: ['Show chocolates', 'Show flowers', 'Change budget', 'Under Rs. 5000'],
+    }
+  }
+
   return null
 }
 
@@ -333,6 +378,32 @@ export function getEnglishDirectReply(input: string): SinglishDirectReply | null
       text:
         "Aiyo, that hurts. If this is an apology, flowers plus a short note will land better than a cold courier. My suggestion: keep it classy, add a note card, and if you can, hand-deliver it. Shall I show flower picks or help write the note first?",
       chips: ['Show flower picks', 'Write the note', 'Keep it simple'],
+    }
+  }
+
+  // How are you
+  if (isShort(text) && /\b(how are you|how's it going|how do you do)\b/.test(text)) {
+    return {
+      text: 'I am doing great, thanks for asking! How about you? What can I help you with today?',
+      chips: ['Shop for myself', 'Send a gift', 'Groceries', 'Track order'],
+    }
+  }
+
+  // Thanks
+  const thanksOnly = isShort(text, 6) && /\b(thank|thanks|thank you|cheers)\b/.test(text)
+  if (thanksOnly) {
+    return {
+      text: 'Happy to help! Need anything else?',
+      chips: ['Shop for myself', 'Send a gift', 'Groceries', 'Track order'],
+    }
+  }
+
+  // Agreement
+  const agreementOnly = isShort(text, 4) && /^\s*(ok|yes|yep|sure|alright|right|hmm|yeah)\s*$/i.test(text)
+  if (agreementOnly) {
+    return {
+      text: 'Great! What are we doing next — shopping for yourself, sending a gift, or something else?',
+      chips: ['Shop for myself', 'Send a gift', 'Groceries', 'Track order'],
     }
   }
 

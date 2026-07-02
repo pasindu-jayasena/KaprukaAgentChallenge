@@ -34,6 +34,8 @@ interface Slots {
   mood?: 'sad' | 'apology' | 'romantic' | 'practical'
   simple?: boolean
   broad: boolean
+  noBudgetLimit?: boolean
+  budgetRaised?: boolean
 }
 
 function normalize(text: string) {
@@ -87,12 +89,16 @@ function classify(text: string, messages?: ChatTurn[]): Slots {
   const all = normalize(text + ' ' + memory(messages, 'user'))
   const category = categoryOf(now) ?? categoryOf(all)
   const recipient = recipientOf(all)
-  const noBudgetLimit = /\b(no budget limit|no limit|budget limit na|budget ekak na)\b/.test(now)
-  const budget = noBudgetLimit ? undefined : parseBudget(now) ?? parseBudget(all)
+  const noBudgetLimit = /\b(no budget limit|no limit|budget limit na|budget ekak na|limit naha|budget illai)\b/.test(now)
+  // Current message budget ALWAYS takes priority over conversation history
+  const currentBudget = parseBudget(now)
+  const historyBudget = parseBudget(memory(messages, 'user'))
+  const budget = noBudgetLimit ? undefined : currentBudget ?? historyBudget
+  const budgetRaised = !!currentBudget && !!historyBudget && currentBudget > historyBudget
   const emotional = /\b(broke up|breakup|sorry|apology|forgive|sad|upset|heartbroken|duken|duka|tharaha|yalu karaganna|yalukaraganna)\b/.test(all)
   const gift = /\b(gift|send|surprise|girlfriend|wife|birthday|anniversary|eyata|kellawa|recipient|denna)\b/.test(all)
   const self = /\b(for myself|self shopping|weekly|grocer(?:y|ies)|daily essentials?|rice|milk|phone charger|charger|electronics?|home item|room item|mata ganna|mage gedarata)\b/.test(all)
-  const simple = /\b(simpler options?|simple|cheaper|low budget|aduma|adu ganan|budget option)\b/.test(now)
+  const simple = /\b(simpler options?|simple|cheaper|low budget|aduma|adu ganan|budget option|budget adu)\b/.test(now)
   let intent: Intent = 'unknown'
   if (emotional && gift) intent = 'emotional_gift'
   else if (self && !gift) intent = 'self_shop'
@@ -107,6 +113,8 @@ function classify(text: string, messages?: ChatTurn[]): Slots {
     mood: emotional ? 'sad' : recipient === 'girlfriend' || recipient === 'wife' || recipient === 'partner' ? 'romantic' : self ? 'practical' : undefined,
     simple,
     broad: (intent === 'gift_shop' || intent === 'emotional_gift') && (!category || category === 'gift'),
+    noBudgetLimit,
+    budgetRaised,
   }
 }
 
@@ -179,6 +187,51 @@ function backupQuery(slots: Slots) {
   if (slots.category === 'groceries') return 'groceries essentials rice dhal milk'
   if (slots.category === 'electronics') return 'charger adapter cable power bank'
   return 'kapruka gift hamper'
+}
+
+/** Broader fallback queries when budget-specific search fails */
+function broaderQuery(slots: Slots) {
+  if (slots.category === 'chocolate') return 'chocolate'
+  if (slots.category === 'flowers') return 'flowers'
+  if (slots.category === 'cake') return 'cake'
+  if (slots.category === 'perfume') return 'perfume'
+  if (slots.category === 'teddy') return 'teddy'
+  if (slots.category === 'groceries') return 'groceries'
+  if (slots.category === 'electronics') return 'electronics'
+  return 'gift'
+}
+
+/** Try multiple search strategies before giving up on budget */
+async function searchWithRetry(mcp: KaprukaMCPClient, slots: Slots, emit: StatusEmitter): Promise<SearchProduct[]> {
+  // Strategy 1: Normal query with budget
+  const first = await search(mcp, query(slots), slots.budget, emit)
+  let filtered = first.filter((p) => matches(p, slots))
+  if (filtered.length >= 2) return filtered
+
+  // Strategy 2: Backup query with budget
+  const backup = await search(mcp, backupQuery(slots), slots.budget, emit)
+  filtered = [...filtered, ...backup.filter((p) => matches(p, slots))]
+  if (filtered.length >= 2) return filtered
+
+  // Strategy 3: Broader query with budget (less strict matching)
+  const broader = await search(mcp, broaderQuery(slots), slots.budget, emit)
+  const broaderFiltered = broader.filter((p) => p.id && p.name && p.in_stock !== false)
+  if (broaderFiltered.length > 0) return [...filtered, ...broaderFiltered]
+
+  // Strategy 4: Search without budget limit but show closest to budget
+  if (slots.budget) {
+    const noBudget = await search(mcp, query(slots), undefined, emit)
+    const withinRange = noBudget
+      .filter((p) => matches(p, slots))
+      .filter((p) => {
+        const price = priceOf(p.price)
+        // Allow up to 30% over budget — show closest options
+        return price <= slots.budget! * 1.3
+      })
+    if (withinRange.length > 0) return withinRange
+  }
+
+  return filtered
 }
 
 async function search(mcp: KaprukaMCPClient, q: string, budget: number | undefined, emit: StatusEmitter) {
@@ -256,29 +309,30 @@ function budgetRaiseAskPayload(chatLang: ChatLang): ChatPayload {
 
 function budgetFailurePayload(slots: Slots, chatLang: ChatLang): ChatPayload {
   const budget = slots.budget ? 'Rs. ' + slots.budget.toLocaleString() : 'that budget'
+  // If user already tried simpler options, suggest switching category entirely
   if (slots.simple) {
-    if (chatLang === 'singlish' || chatLang === 'si') return { type: 'chat', text: budget + ' athule cheaper chocolate options baluwath proper gift widihata denna hoda ekak hambune na. Methana honest best move eka budget eka wadi karana eka, nathnam flowers/card wage simple gift ekakata maru wena eka.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
-    if (chatLang === 'tanglish' || chatLang === 'ta') return { type: 'chat', text: budget + ' kulla cheaper chocolate options paathalum proper gift-a kudukka nalla option kidaikkala. Best move: budget increase pannunga, illa flowers/card side-ku maaralam.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
-    return { type: 'chat', text: 'I checked cheaper chocolate options too, but I still cannot find a proper gift-quality pick within ' + budget + '. Best move: raise the budget a bit or switch to flowers/card.', chips: ['Raise budget', 'Show flowers', 'Add note card'] }
+    if (chatLang === 'singlish' || chatLang === 'si') return { type: 'chat', text: 'Ane, ' + budget + ' athule mehema search kalath gift-quality ekak hambenne naha. Honest best move eka: budget eka poddak wadi karanna, nathnam flowers hari card ekak wage vena gift type ekakata yamu.', chips: ['Rs. 10000', 'Rs. 15000', 'Show flowers', 'No budget limit'] }
+    if (chatLang === 'tanglish' || chatLang === 'ta') return { type: 'chat', text: 'Sorry, ' + budget + ' kulla search pannadhum gift-quality option kidaikkala. Best move: budget konjam increase pannunga, illa flowers/card side-ku maaralam.', chips: ['Rs. 10000', 'Rs. 15000', 'Show flowers', 'No budget limit'] }
+    return { type: 'chat', text: 'I searched wider but still cannot find a gift-quality pick within ' + budget + '. My honest advice: raise the budget a bit, or switch to flowers or a card.', chips: ['Rs. 10000', 'Rs. 15000', 'Show flowers', 'No budget limit'] }
   }
   if (chatLang === 'singlish' || chatLang === 'si') {
     return {
       type: 'chat',
-      text: budget + ' athule proper gift-quality options hambune na. Budget eka poddak wadi karannada, nathnam simpler chocolate options balannada?',
-      chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+      text: budget + ' athule gift-quality options hambune naha. Budget eka poddak wadi karannada, cheaper options balannada, nathnam flowers/card wage wena ekak balannada?',
+      chips: ['Rs. 10000', 'Rs. 15000', 'Simpler options', 'Show flowers'],
     }
   }
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     return {
       type: 'chat',
-      text: budget + ' kulla proper gift-quality options kidaikkala. Budget konjam increase pannalama, illa simpler options paakalama?',
-      chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+      text: budget + ' kulla gift-quality options kidaikkala. Budget increase pannalama, cheaper options paakalama, illa flowers/card paakalama?',
+      chips: ['Rs. 10000', 'Rs. 15000', 'Simpler options', 'Show flowers'],
     }
   }
   return {
     type: 'chat',
-    text: 'I could not find proper gift-quality options within ' + budget + '. Want me to raise the budget a bit or show simpler alternatives?',
-    chips: ['Raise budget', 'Simpler options', 'Show flowers'],
+    text: 'I could not find proper gift-quality options within ' + budget + '. Want me to raise the budget, show cheaper alternatives, or switch to flowers or a card?',
+    chips: ['Rs. 10000', 'Rs. 15000', 'Simpler options', 'Show flowers'],
   }
 }
 
@@ -297,27 +351,91 @@ export async function runAgenticShoppingPipeline(opts: {
   messages?: ChatTurn[]
 }): Promise<ChatPayload | null> {
   const normalizedText = normalize(opts.text)
-  const wantsRaiseBudget = /\b(raise budget|increase budget|budget eka wadi|budget wadi|wadi karanna|budget increase)\b/.test(normalizedText)
-  if (wantsRaiseBudget && !parseBudget(normalizedText)) return budgetRaiseAskPayload(opts.chatLang)
+
+  // Handle "Raise budget" WITHOUT a number — ask for the new budget
+  const wantsRaiseBudget = /\b(raise budget|increase budget|budget eka wadi|budget wadi|wadi karanna|budget increase|raise|wadi)\b/.test(normalizedText)
+  if (wantsRaiseBudget && !parseBudget(normalizedText) && !/\b(no budget limit|no limit|budget limit na|budget ekak na|limit naha|budget illai)\b/.test(normalizedText)) {
+    return budgetRaiseAskPayload(opts.chatLang)
+  }
 
   const slots = classify(opts.text, opts.messages)
+
+  // If user just gave a budget number (e.g., "Rs. 10000") after we asked for it,
+  // and there's shopping context from history, force a search immediately
+  const isPureBudgetResponse = /^\s*(?:rs\.?\s*)?\d{3,7}\s*$/i.test(normalizedText.replace(/,/g, ''))
+  if (isPureBudgetResponse && slots.intent === 'unknown' && slots.budget) {
+    // Reconstruct intent from conversation history
+    const historySlots = classify(memory(opts.messages, 'user'), opts.messages)
+    if (historySlots.intent !== 'unknown') {
+      slots.intent = historySlots.intent
+      slots.category = historySlots.category ?? slots.category
+      slots.recipient = historySlots.recipient ?? slots.recipient
+      slots.mood = historySlots.mood ?? slots.mood
+      slots.budgetRaised = true
+      slots.broad = false
+    }
+  }
+
+  // "No budget limit" — force search with no budget constraint using history context
+  if (slots.noBudgetLimit && slots.intent === 'unknown') {
+    const historySlots = classify(memory(opts.messages, 'user'), opts.messages)
+    if (historySlots.intent !== 'unknown') {
+      slots.intent = historySlots.intent
+      slots.category = historySlots.category ?? slots.category
+      slots.recipient = historySlots.recipient ?? slots.recipient
+      slots.mood = historySlots.mood ?? slots.mood
+      slots.budget = undefined
+      slots.broad = false
+    }
+  }
+
+  // "Simpler options" — use history context + simple flag
+  if (slots.simple && slots.intent === 'unknown') {
+    const historySlots = classify(memory(opts.messages, 'user'), opts.messages)
+    if (historySlots.intent !== 'unknown') {
+      slots.intent = historySlots.intent
+      slots.category = historySlots.category ?? slots.category
+      slots.recipient = historySlots.recipient ?? slots.recipient
+      slots.mood = historySlots.mood ?? slots.mood
+      slots.broad = false
+    }
+  }
+
   if (slots.intent === 'unknown') return runAgenticShoppingShortcut(opts)
   if (slots.broad) return askPayload(slots, opts.chatLang)
 
-  opts.emitStatus('agent_concierge', { label: slots.intent === 'self_shop' ? 'Planning a practical basket' : 'Reading the occasion' })
-  const first = await search(opts.mcp, query(slots), slots.budget, opts.emitStatus)
-  let filtered = first.filter((p) => matches(p, slots))
-  if (filtered.length < 2) {
-    const backup = await search(opts.mcp, backupQuery(slots), slots.budget, opts.emitStatus)
-    filtered = [...filtered, ...backup.filter((p) => matches(p, slots))]
-  }
+  opts.emitStatus('agent_concierge', {
+    label: slots.budgetRaised
+      ? 'Searching with the new budget'
+      : slots.simple
+      ? 'Looking for simpler options'
+      : slots.noBudgetLimit
+      ? 'Searching without budget limit'
+      : slots.intent === 'self_shop'
+      ? 'Planning a practical basket'
+      : 'Reading the occasion',
+  })
+
+  // Use the multi-strategy retry search
+  const filtered = await searchWithRetry(opts.mcp, slots, opts.emitStatus)
   const products = toProducts(filtered, slots)
+
   if (!products.length && slots.budget) return budgetFailurePayload(slots, opts.chatLang)
   if (!products.length) return runAgenticShoppingShortcut(opts)
+
   const total = products.reduce((sum, p) => sum + p.price, 0)
+  const overBudget = slots.budget && products.some((p) => p.price > slots.budget!)
+  const rawText = overBudget
+    ? copy(slots, opts.chatLang, total) + (opts.chatLang === 'singlish' || opts.chatLang === 'si'
+        ? ' Budget eka poddak iwara karanna una, but mewa closest options.'
+        : opts.chatLang === 'tanglish' || opts.chatLang === 'ta'
+        ? ' Budget konjam cross aagidhu, but closest options idhu.'
+        : ' These are the closest options, slightly above budget.')
+    : copy(slots, opts.chatLang, total)
+
   return {
     type: 'product_trio',
-    rawText: copy(slots, opts.chatLang, total),
+    rawText,
     trio: { context: context(slots), products },
     chips: chips(slots),
   }

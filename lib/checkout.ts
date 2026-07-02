@@ -1,7 +1,7 @@
 import type { CartItem, CheckoutDetailsInput, OrderResult } from '@/types'
 import { KaprukaMCPClient } from '@/lib/server/mcp-client'
 import { sanitizeCreateOrderArgs } from '@/lib/server/mcp-order'
-import { parseKaprukaOrderResponse } from '@/lib/parse-order-result'
+import { KaprukaOrderParseError, parseKaprukaOrderResponse } from '@/lib/parse-order-result'
 
 export type CheckoutInput = CheckoutDetailsInput & { cart: CartItem[] }
 
@@ -27,5 +27,12 @@ export async function createKaprukaOrder(input: CheckoutInput): Promise<OrderRes
   })
 
   const output = await mcp.callTool('kapruka_create_order', payload)
-  return parseKaprukaOrderResponse(output)
+  try {
+    return parseKaprukaOrderResponse(output)
+  } catch (error) {
+    if (error instanceof KaprukaOrderParseError) {
+      console.error('[Kapruka order parse failed]', error.message, error.rawSnippet)
+    }
+    throw error
+  }
 }

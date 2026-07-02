@@ -12,6 +12,55 @@ type PartialOrder = Partial<ParsedOrderTotals> & {
   expiresAt?: string | null
 }
 
+const URL_KEYS = new Set([
+  'checkout_url',
+  'checkouturl',
+  'checkout_link',
+  'checkoutlink',
+  'pay_url',
+  'payurl',
+  'payment_url',
+  'paymenturl',
+  'payment_link',
+  'paymentlink',
+  'redirect_url',
+  'redirecturl',
+  'url',
+  'link',
+])
+
+const REF_KEYS = new Set([
+  'order_ref',
+  'orderref',
+  'order_id',
+  'orderid',
+  'order_number',
+  'ordernumber',
+  'reference',
+  'ref',
+  'pnref',
+])
+
+const EXPIRES_KEYS = new Set(['expires_at', 'expiresat', 'expiry', 'expires'])
+const ERROR_KEYS = new Set(['error', 'message', 'reason', 'detail', 'details'])
+const SUBTOTAL_KEYS = new Set(['items_total', 'itemstotal', 'subtotal', 'sub_total'])
+const DELIVERY_KEYS = new Set(['delivery_fee', 'deliveryfee', 'delivery_charge', 'deliverycharge', 'delivery'])
+const TOTAL_KEYS = new Set(['grand_total', 'grandtotal', 'total_lkr', 'totallkr', 'total', 'amount'])
+
+export class KaprukaOrderParseError extends Error {
+  rawSnippet: string
+
+  constructor(message: string, raw: string) {
+    super(message)
+    this.name = 'KaprukaOrderParseError'
+    this.rawSnippet = raw.replace(/\s+/g, ' ').trim().slice(0, 700)
+  }
+}
+
+function keyName(key: string) {
+  return key.toLowerCase().replace(/[^a-z0-9_]/g, '')
+}
+
 function toAmount(v: unknown): number | undefined {
   if (v == null || v === '') return undefined
   if (typeof v === 'number' && Number.isFinite(v)) return v
@@ -31,44 +80,75 @@ function mergeOrder(target: PartialOrder, patch: PartialOrder): PartialOrder {
   }
 }
 
+function walk(node: unknown, visit: (key: string | null, value: unknown) => void, key: string | null = null, depth = 0) {
+  if (depth > 8) return
+  visit(key, node)
+  if (Array.isArray(node)) {
+    node.forEach((value) => walk(value, visit, key, depth + 1))
+    return
+  }
+  if (node && typeof node === 'object') {
+    for (const [childKey, value] of Object.entries(node as Record<string, unknown>)) {
+      walk(value, visit, childKey, depth + 1)
+    }
+  }
+}
+
+function findStringByKeys(
+  obj: Record<string, unknown>,
+  keys: Set<string>,
+  isValid: (value: string) => boolean = Boolean
+) {
+  let found: string | null = null
+  walk(obj, (key, value) => {
+    if (found || !key || !keys.has(keyName(key))) return
+    const text = String(value ?? '').trim()
+    if (text && isValid(text)) found = text
+  })
+  return found
+}
+
+function findAmountByKeys(obj: Record<string, unknown>, keys: Set<string>) {
+  let found: number | undefined
+  walk(obj, (key, value) => {
+    if (found != null || !key || !keys.has(keyName(key))) return
+    found = toAmount(value)
+  })
+  return found
+}
+
+function findFailureMessage(obj: Record<string, unknown>) {
+  let found: string | null = null
+  walk(obj, (key, value) => {
+    if (found || !key || !ERROR_KEYS.has(keyName(key))) return
+    if (value && typeof value === 'object') return
+    const text = String(value ?? '').trim()
+    if (text && !/^false$|^true$|^null$/i.test(text)) found = text
+  })
+  return found
+}
+
+function looksLikePaymentUrl(value: string) {
+  return /^https?:\/\//i.test(value) && /kapruka|pay|checkout|order|payment/i.test(value)
+}
+
+function looksLikeRef(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{3,}$/.test(value) && !/^https?:\/\//i.test(value)
+}
+
 /** Extract checkout URL, ref, and totals from a JSON object (Kapruka response_format=json). */
 function extractFromJsonObject(obj: Record<string, unknown>): PartialOrder {
-  const summary =
-    obj.summary && typeof obj.summary === 'object'
-      ? (obj.summary as Record<string, unknown>)
-      : null
-
-  const url = String(
-    obj.checkout_url ?? obj.pay_url ?? obj.payment_url ?? obj.checkoutUrl ?? ''
-  ).trim()
-  const ref = String(
-    obj.order_ref ?? obj.order_id ?? obj.order_number ?? obj.orderRef ?? ''
-  ).trim()
-  const expiresAt = obj.expires_at ?? obj.expiresAt
-
-  let subtotal: number | undefined
-  let deliveryFee: number | undefined
-  let total: number | undefined
-
-  if (summary) {
-    subtotal = toAmount(summary.items_total ?? summary.itemsTotal ?? summary.subtotal)
-    deliveryFee = toAmount(
-      summary.delivery_fee ?? summary.deliveryFee ?? summary.delivery
-    )
-    total = toAmount(summary.grand_total ?? summary.grandTotal ?? summary.total)
-  } else {
-    subtotal = toAmount(obj.items_total ?? obj.itemsTotal ?? obj.subtotal)
-    deliveryFee = toAmount(obj.delivery_fee ?? obj.deliveryFee ?? obj.delivery)
-    total = toAmount(obj.grand_total ?? obj.grandTotal ?? obj.total ?? obj.total_lkr)
-  }
+  const url = findStringByKeys(obj, URL_KEYS, looksLikePaymentUrl)
+  const ref = findStringByKeys(obj, REF_KEYS, looksLikeRef)
+  const expiresAt = findStringByKeys(obj, EXPIRES_KEYS)
 
   return {
     url: url || null,
     ref: ref || null,
-    expiresAt: expiresAt ? String(expiresAt) : null,
-    subtotal,
-    deliveryFee,
-    total,
+    expiresAt: expiresAt || null,
+    subtotal: findAmountByKeys(obj, SUBTOTAL_KEYS),
+    deliveryFee: findAmountByKeys(obj, DELIVERY_KEYS),
+    total: findAmountByKeys(obj, TOTAL_KEYS),
   }
 }
 
@@ -78,12 +158,7 @@ function collectTextBlobs(raw: string): string[] {
 
   const visit = (node: unknown) => {
     if (typeof node === 'string') {
-      if (
-        node.includes('Grand total') ||
-        node.includes('Order created') ||
-        node.includes('checkout') ||
-        node.includes('Delivery')
-      ) {
+      if (/grand total|order created|checkout|payment|pay|delivery|total|order/i.test(node)) {
         blobs.add(node)
       }
       return
@@ -109,31 +184,58 @@ function collectTextBlobs(raw: string): string[] {
   return [...blobs]
 }
 
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    const first = text.indexOf('{')
+    const last = text.lastIndexOf('}')
+    if (first < 0 || last <= first) return null
+    try {
+      return JSON.parse(text.slice(first, last + 1)) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+}
+
+function extractFailureFromRaw(raw: string) {
+  const json = extractJsonObject(raw)
+  if (json) {
+    const message = findFailureMessage(json)
+    if (message) return message
+  }
+
+  const textMatch =
+    raw.match(/(?:Error|Failed|Reason|Message)\s*[:=-]\s*([^\n]{8,220})/i)?.[1]?.trim() ??
+    raw.match(/RATE_LIMIT[^\n]*/i)?.[0]?.trim()
+  return textMatch || null
+}
+
 /** Parse Kapruka MCP kapruka_create_order response (JSON and/or markdown). */
 export function parseKaprukaOrderResponse(raw: string): OrderResult {
   const trimmed = raw.trim()
   let merged: PartialOrder = {}
 
-  // JSON object (response_format=json)
-  try {
-    const j = JSON.parse(trimmed) as Record<string, unknown>
-    merged = mergeOrder(merged, extractFromJsonObject(j))
+  const topLevel = extractJsonObject(trimmed)
+  if (topLevel) {
+    merged = mergeOrder(merged, extractFromJsonObject(topLevel))
 
-    if (typeof j.result === 'string') {
-      try {
-        merged = mergeOrder(merged, extractFromJsonObject(JSON.parse(j.result) as Record<string, unknown>))
-      } catch {
-        merged = mergeOrder(merged, parseOrderMarkdown(j.result) ?? {})
-      }
-    } else if (j.result && typeof j.result === 'object') {
-      merged = mergeOrder(merged, extractFromJsonObject(j.result as Record<string, unknown>))
+    const result = topLevel.result
+    if (typeof result === 'string') {
+      const nested = extractJsonObject(result)
+      merged = mergeOrder(merged, nested ? extractFromJsonObject(nested) : parseOrderMarkdown(result) ?? {})
+    } else if (result && typeof result === 'object') {
+      merged = mergeOrder(merged, extractFromJsonObject(result as Record<string, unknown>))
     }
-  } catch {
-    /* markdown path below */
   }
 
   // Markdown tables in any text blob
   for (const blob of collectTextBlobs(trimmed)) {
+    const nested = extractJsonObject(blob)
+    if (nested) {
+      merged = mergeOrder(merged, extractFromJsonObject(nested))
+    }
     const md = parseOrderMarkdown(blob)
     if (md) merged = mergeOrder(merged, md)
     const totals = extractTotalsFromMarkdown(blob)
@@ -143,9 +245,11 @@ export function parseKaprukaOrderResponse(raw: string): OrderResult {
   finalizeTotals(merged)
 
   if (!merged.url && !merged.ref) {
-    throw new Error(
-      'Could not get a payment link from Kapruka. Please verify delivery details and try again.'
-    )
+    const failure = extractFailureFromRaw(trimmed)
+    const message = failure
+      ? 'Order failed: ' + failure
+      : 'Could not get a payment link from Kapruka. Please verify delivery details and try again.'
+    throw new KaprukaOrderParseError(message, trimmed)
   }
 
   return {
@@ -171,11 +275,13 @@ function parseOrderMarkdown(text: string): PartialOrder | null {
   const ref =
     text.match(/Order created\s*[—–-]\s*`([^`]+)`/i)?.[1]?.trim() ??
     text.match(/\*\*Order(?:\s+Number|\s+ID)?\*\*:\s*`?([^`\n]+)`?/i)?.[1]?.trim() ??
+    text.match(/(?:Order|Reference|Ref|PN Ref)\s*[:#-]\s*`?([A-Za-z0-9_-]{4,})`?/i)?.[1]?.trim() ??
     text.match(/`?(ORD-[A-Za-z0-9-]+)`?/i)?.[1]?.trim()
 
   const payLinkMatch =
-    text.match(/\[([^\]]*(?:pay|checkout|Open)[^\]]*)\]\((https?:\/\/[^)]+)\)/i) ??
-    text.match(/(https?:\/\/[^\s)\]"']*kapruka[^\s)\]"']*)/i)
+    text.match(/\[([^\]]*(?:pay|checkout|payment|open)[^\]]*)\]\((https?:\/\/[^)]+)\)/i) ??
+    text.match(/(?:payment|pay|checkout)\s*(?:link|url)?\s*[:=-]\s*(https?:\/\/\S+)/i) ??
+    text.match(/(https?:\/\/[^\s)\]"']*(?:kapruka|pay|checkout|payment)[^\s)\]"']*)/i)
 
   const url = (payLinkMatch?.[2] ?? payLinkMatch?.[1])?.replace(/[)\],.]+$/, '').trim()
   const expiresMatch = text.match(/expires at\s+([^\n_.]+)/i)

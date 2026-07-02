@@ -9,7 +9,7 @@ import { getCheckoutPreview } from '@/lib/checkout-preview'
 import { orderArgsToCheckoutDetails } from '@/lib/order-args'
 import { parseCheckoutDetails } from '@/lib/parse-checkout-details'
 import { messagesForModel } from '@/lib/conversation-context'
-import { isNonShoppingTurn } from '@/lib/chat-intent'
+import { isCheckoutFailureFollowUp, isNonShoppingTurn } from '@/lib/chat-intent'
 import { sanitizeAssistantText } from '@/lib/server/mcp-order'
 import { polishAssistantText } from '@/lib/prompts/singlish-style'
 import { getEnglishDirectReply, getSinhalaDirectReply, getSinglishDirectReply, getTanglishDirectReply } from '@/lib/singlish-dialogue'
@@ -371,7 +371,12 @@ export async function POST(req: Request) {
             lastUserMessage.content
           )
 
-        if (lastUserMessage && !checkoutDetails) {
+        if (
+          lastUserMessage &&
+          !checkoutDetails &&
+          !isNonShoppingTurn(lastUserMessage.content, messages) &&
+          !isCheckoutFailureFollowUp(lastUserMessage.content, messages)
+        ) {
           const shortcutPayload = await runAgenticShoppingPipeline({
             text: lastUserMessage.content,
             chatLang,

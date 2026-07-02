@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Volume2, VolumeX } from 'lucide-react'
 import { AppShell } from '@/components/shell/AppShell'
 import { RecentSessionsSidebar } from '@/components/chat/RecentSessionsSidebar'
 import { ProgressInputBar } from '@/components/chat/ProgressInputBar'
@@ -44,7 +43,7 @@ import type {
 } from '@/types'
 import { formatCheckoutUserDisplay, enrichMessageForModel } from '@/lib/conversation-context'
 import { useRecipientStore } from '@/store/recipientStore'
-import { useTextToSpeech } from '@/hooks/useTextToSpeech'
+import { useVoiceOutput } from '@/hooks/useVoiceOutput'
 
 function getGreeting(uiLang: string): string {
   if (uiLang === 'si') return ANU_GREETINGS.si
@@ -63,7 +62,7 @@ function AnuChatInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { messages, uiLang } = useLanguage()
-  const { supported: ttsSupported, speakingId, speak } = useTextToSpeech(uiLang)
+  const { muted: voiceMuted, read: readAloud } = useVoiceOutput()
   const cartItems = useCartStore((s) => s.items)
   const removeItems = useCartStore((s) => s.removeItems)
   const savedProfiles = useRecipientStore((s) => s.profiles)
@@ -88,6 +87,7 @@ function AnuChatInner() {
   const loaded = useRef(false)
   const pendingSession = useRef<string | null>(null)
   const lastLocalChatLang = useRef<Exclude<ChatLang, 'en'> | null>(null)
+  const lastSpokenMessage = useRef<string | null>(null)
 
   const persistSession = useCallback(
     async (patch: Partial<SessionRecord> & { messages?: ChatMessage[] }) => {
@@ -216,6 +216,17 @@ function AnuChatInner() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, statusLines, isStreaming])
+  useEffect(() => {
+    if (voiceMuted || isStreaming || !chatMessages.length) return
+    const lastIndex = chatMessages.length - 1
+    const last = chatMessages[lastIndex]
+    if (last.role !== 'assistant' || last.isStreaming || !last.content.trim()) return
+
+    const id = `assistant-${lastIndex}-${last.content.slice(0, 24)}`
+    if (lastSpokenMessage.current === id) return
+    lastSpokenMessage.current = id
+    readAloud(id, last.content)
+  }, [chatMessages, isStreaming, readAloud, voiceMuted])
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -724,31 +735,13 @@ function AnuChatInner() {
                     <div className="min-w-0 flex-1 space-y-2.5">
                       {(msg.content || isLastStreaming) && (
                         <div className="bubble-ai">
-                          <div className="flex items-start gap-2">
-                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-                              {msg.content}
-                              {isLastStreaming && isStreaming && !statusLines.length && (
-                                <span
-                                  className="ml-1 inline-block h-4 w-[2px] bg-[var(--kap-purple)]"
-                                  style={{ animation: 'cursorBlink 1s ease-in-out infinite' }}
-                                />
-                              )}
-                            </span>
-                            {ttsSupported && msg.content.trim() && !isLastStreaming && (
-                              <button
-                                type="button"
-                                onClick={() => speak(`assistant-${i}`, msg.content)}
-                                aria-label={speakingId === `assistant-${i}` ? 'Stop reading message' : 'Read message aloud'}
-                                className="-mr-1 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-kapruka-header/70 transition hover:bg-kapruka-header/10 hover:text-kapruka-header"
-                              >
-                                {speakingId === `assistant-${i}` ? (
-                                  <VolumeX className="h-3.5 w-3.5" strokeWidth={2} />
-                                ) : (
-                                  <Volume2 className="h-3.5 w-3.5" strokeWidth={2} />
-                                )}
-                              </button>
-                            )}
-                          </div>
+                          {msg.content}
+                          {isLastStreaming && isStreaming && !statusLines.length && (
+                            <span
+                              className="ml-1 inline-block h-4 w-[2px] bg-[var(--kap-purple)]"
+                              style={{ animation: 'cursorBlink 1s ease-in-out infinite' }}
+                            />
+                          )}
                         </div>
                       )}
                       {msg.payload?.type === 'product_trio' && (

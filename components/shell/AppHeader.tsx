@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Moon, Search, ShoppingCart, Sun, Truck } from 'lucide-react'
+import { Menu, Moon, Search, ShoppingCart, Sun, Volume2, VolumeX } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
 import { useTheme } from '@/providers/ThemeProvider'
 import { CartBadge } from '@/components/shell/CartBadge'
 import type { UiLang } from '@/types'
+import { useVoiceOutput } from '@/hooks/useVoiceOutput'
 
 const LANGS: { code: UiLang; label: string }[] = [
   { code: 'en', label: 'EN' },
@@ -26,6 +27,7 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
   const router = useRouter()
   const { messages, uiLang, setUiLang } = useLanguage()
   const { theme, toggle } = useTheme()
+  const { supported: voiceSupported, muted, toggleMuted } = useVoiceOutput()
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -102,14 +104,20 @@ export function AppHeader({ onCartOpen, cartOpen = false, onMenuToggle, showMenu
             <ShoppingCart className="h-[18px] w-[18px]" />
             <CartBadge />
           </button>
-          <Link
-            href="/chat?intent=track"
-            aria-label={messages.nav.track}
-            className="kap-nav-icon"
+          <button
+            type="button"
+            onClick={toggleMuted}
+            disabled={!voiceSupported}
+            aria-label={muted ? 'Unmute assistant voice' : 'Mute assistant voice'}
+            aria-pressed={!muted}
+            className={`kap-nav-icon ${!muted ? 'kap-nav-icon--active' : ''} ${!voiceSupported ? 'opacity-50' : ''}`}
           >
-            <Truck className="h-[18px] w-[18px]" />
-          </Link>
-
+            {muted ? (
+              <VolumeX className="h-[18px] w-[18px]" />
+            ) : (
+              <Volume2 className="h-[18px] w-[18px]" />
+            )}
+          </button>
 
           <button
             type="button"

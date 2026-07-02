@@ -42,7 +42,7 @@ const en = {
     headline: 'What can I help you find today?',
     subhead: 'Groceries, gifts, electronics, fashion - tell me what you need.',
     placeholder: 'Ask, refine, or tell me what changed…',
-    flowOnIt: 'Anu is thinking through it...',
+    flowOnIt: 'Anu is thinking...',
     presenceTitle: 'Anu',
     presenceSubtitle: 'your shopping companion',
     presenceOnline: 'Anu is online',

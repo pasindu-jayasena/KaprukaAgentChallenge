@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createKaprukaOrder } from '@/lib/checkout'
-import { resolveReceiptTotals } from '@/lib/parse-order-result'
+import { KaprukaOrderParseError, resolveReceiptTotals } from '@/lib/parse-order-result'
 import {
   normalizeCheckoutDetails,
   validateCheckoutDetails,
@@ -30,6 +30,17 @@ const schema = z.object({
   specialInstructions: z.string().nullish(),
 })
 
+type CheckoutErrorBody = {
+  error: string
+  reason?: string
+  details?: string
+}
+
+function maskSensitive(value: string): string {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\b(?:\+?94|0)?\d[\d\s-]{7,}\d\b/g, '[phone]')
+}
 // Map known Kapruka API errors to user-friendly messages
 function friendlyError(errorMsg: string): string {
   if (errorMsg.includes('city_not_deliverable')) {
@@ -47,10 +58,25 @@ function friendlyError(errorMsg: string): string {
   if (errorMsg.includes('invalid_date')) {
     return "That delivery date doesn't work. Please pick a date at least 1 day from now."
   }
+  if (errorMsg.includes('Could not get a payment link')) {
+    return 'Kapruka did not return a payment link or order reference for this checkout. Please try again, or change the item/delivery details.'
+  }
   // Fallback: strip the technical prefix
   return errorMsg.replace(/^Order failed:\s*/i, '').trim() || 'Checkout failed. Please try again.'
 }
 
+
+function checkoutErrorBody(error: unknown): CheckoutErrorBody {
+  const msg = error instanceof Error ? error.message : 'Checkout failed'
+  const body: CheckoutErrorBody = { error: friendlyError(msg) }
+
+  if (error instanceof KaprukaOrderParseError) {
+    body.reason = error.message
+    if (error.rawSnippet) body.details = maskSensitive(error.rawSnippet)
+  }
+
+  return body
+}
 // Basic HTML sanitization for string inputs
 function sanitize(str: string): string {
   return str
@@ -142,11 +168,8 @@ export async function POST(req: Request) {
       specialInstructions: normalizedDetails.specialInstructions,
     })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Checkout failed'
-    console.error('Checkout error:', msg)
-    return NextResponse.json(
-      { error: friendlyError(msg) },
-      { status: 400 }
-    )
+    const body = checkoutErrorBody(e)
+    console.error('Checkout error:', body.reason ?? body.error, body.details ?? '')
+    return NextResponse.json(body, { status: 400 })
   }
 }

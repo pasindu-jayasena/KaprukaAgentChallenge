@@ -58,6 +58,27 @@ function isCheckoutCollectionText(text: string) {
 function isFlowPayload(payload: ChatPayload | undefined) {
   return payload?.type === 'order_preview' || payload?.type === 'checkout' || payload?.type === 'order_tracking'
 }
+
+type CheckoutFailureResponse = {
+  error?: string
+  reason?: string
+  details?: string
+}
+
+function checkoutFailureMessage(data: CheckoutFailureResponse) {
+  return data.error || data.reason || 'Checkout failed. Please double-check your details and try again.'
+}
+
+function logCheckoutFailure(source: string, res: Response, data: CheckoutFailureResponse) {
+  if (!res.ok) {
+    console.error(`[${source}] Checkout failed`, {
+      status: res.status,
+      error: data.error,
+      reason: data.reason,
+      details: data.details,
+    })
+  }
+}
 function AnuChatInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -502,6 +523,7 @@ function AnuChatInner() {
           }),
         })
         const checkout = await res.json()
+        logCheckoutFailure('chat-plan-confirm', res, checkout)
         if (checkout.orderResult) {
           const snapshot = cartItems.map((i) => ({ ...i }))
           handleCheckoutSuccess({
@@ -528,9 +550,7 @@ function AnuChatInner() {
         } else {
           const errMsg: ChatMessage = {
             role: 'assistant',
-            content:
-              checkout.error ??
-              'Checkout failed. Please double-check your details and try again.',
+            content: checkoutFailureMessage(checkout),
           }
           setChatMessages((prev) => {
             const next = [...prev, errMsg]
@@ -573,6 +593,7 @@ function AnuChatInner() {
           }),
         })
         const data = await res.json()
+        logCheckoutFailure('chat-preview-confirm', res, data)
         if (data.orderResult) {
           const snapshot = cartItems.map((i) => ({ ...i }))
           handleCheckoutSuccess({
@@ -599,9 +620,7 @@ function AnuChatInner() {
         } else {
           const errMsg: ChatMessage = {
             role: 'assistant',
-            content:
-              data.error ??
-              'Checkout failed. Please double-check your details and try again.',
+            content: checkoutFailureMessage(data),
           }
           setChatMessages((prev) => {
             const next = [...prev, errMsg]

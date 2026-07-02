@@ -21,7 +21,7 @@ export async function createKaprukaOrder(input: CheckoutInput): Promise<OrderRes
       date: input.recipient.date,
       instructions: input.specialInstructions,
     },
-    sender: { name: input.senderName, anonymous: false },
+    sender: { name: input.senderName, email: input.senderEmail, anonymous: false },
     gift_message: input.giftMessage,
     currency: 'LKR',
   })

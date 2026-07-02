@@ -32,6 +32,8 @@ interface CheckoutDraft {
   senderName?: string
   senderEmail?: string
   giftMessage?: string
+  specialInstructions?: string
+  askedGiftMessage?: boolean
 }
 
 function clean(text: string) {
@@ -195,6 +197,26 @@ function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText:
     return
   }
 
+  // Gift message & special instructions collection step
+  if (/\b(personal message|gift message|special instruction|note|card message|handwritten)\b/.test(ask)) {
+    draft.askedGiftMessage = true
+    const lower = clean(text)
+    // User skipped
+    if (/^\s*(no|nope|nah|skip|epa|na|nahi|venda|none|no need|naa)\s*$/i.test(text.trim())) {
+      return
+    }
+    // Try to split: first part = gift message, "special:" or "instructions:" = special instructions
+    const instrMatch = text.match(/(?:special\s*instructions?|delivery\s*instructions?|instructions?)\s*[:=]\s*(.+)/i)
+    if (instrMatch) {
+      draft.specialInstructions = instrMatch[1].trim()
+      const msgPart = text.slice(0, instrMatch.index).replace(/[,;\s]+$/, '').trim()
+      if (msgPart && msgPart.length > 1) draft.giftMessage = msgPart
+    } else {
+      draft.giftMessage = text.trim()
+    }
+    return
+  }
+
   if (phone && !draft.phone) draft.phone = phone
   if (date && !draft.date) draft.date = date
 }
@@ -217,20 +239,23 @@ function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
     if (missing === 'phone') return `Got it. ${name} ge phone number, delivery address, city eka ewannako.`
     if (missing === 'address') return 'Address eka poddak madi. House number, road/lane name ekka full delivery address eka ewannako.'
     if (missing === 'date') return 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
-    return 'Last step eka: sender name eka ewannako. Email nathnam guest email use karannam.'
+    if (missing === 'sender') return 'Sender name eka ewannako. Email ekath ewanna puluwan (optional).'
+    return `Almost done! ${name} ta personal message ekak liyannada? Special delivery instructions tiyenam ekkama ewannako. Skip karanna "No" kiyannako.`
   }
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     if (missing === 'name') return 'Checkout panna actual recipient name venum. Yaarukku deliver panna?'
     if (missing === 'phone') return `Got it. ${name} phone number, delivery address, city anuppunga.`
     if (missing === 'address') return 'Address konjam short-a irukku. House number, road/lane name oda full delivery address anuppunga.'
     if (missing === 'date') return 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
-    return 'Last step: sender name anuppunga. Email illena guest email use pannuren.'
+    if (missing === 'sender') return 'Sender name anuppunga. Email optional-a anuppalaam.'
+    return `Almost done! ${name}-ku personal message ezhuthanuuma? Special delivery instructions irundha ekkavae anuppunga. Skip panna "No" sollunga.`
   }
   if (missing === 'name') return 'Sure. Who should receive this order? Please send the actual recipient name.'
   if (missing === 'phone') return `Got it. What is ${name}'s phone number, delivery address, and city?`
   if (missing === 'address') return 'That address is a bit too short. Please send the full delivery address with house number and road or lane name.'
   if (missing === 'date') return 'What delivery date should I use? You can say tomorrow or send a specific date.'
-  return 'Last step: who is sending this? Send your sender name; email is optional.'
+  if (missing === 'sender') return 'Who is sending this? Send your name and email (email is optional).'
+  return `Almost done! Would you like to add a personal message for ${name}? Any special delivery instructions? Type "No" to skip.`
 }
 
 export function continueCheckoutCollection(
@@ -247,6 +272,7 @@ export function continueCheckoutCollection(
     !hasFullAddress(draft.address) ? 'address' :
     !draft.date ? 'date' :
     !draft.senderName ? 'sender' :
+    !draft.askedGiftMessage ? 'giftMessage' :
     null
 
   if (missing) {
@@ -254,7 +280,9 @@ export function continueCheckoutCollection(
       payload: {
         type: 'chat',
         text: askText(missing, draft, chatLang),
-        chips: missing === 'date' ? ['Tomorrow', 'This weekend'] : undefined,
+        chips: missing === 'date' ? ['Tomorrow', 'This weekend'] :
+               missing === 'giftMessage' ? ['No, skip', 'Happy Birthday!', 'With love'] :
+               undefined,
       },
     }
   }
@@ -264,6 +292,7 @@ export function continueCheckoutCollection(
       senderName: draft.senderName!,
       senderEmail: draft.senderEmail || DEFAULT_SENDER_EMAIL,
       giftMessage: draft.giftMessage,
+      specialInstructions: draft.specialInstructions,
       recipient: {
         name: draft.recipientName!,
         phone: draft.phone!,

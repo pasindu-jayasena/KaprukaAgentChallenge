@@ -9,6 +9,27 @@ import { CheckoutDetailsFields } from '@/components/cart/CheckoutDetailsFields'
 import { OrderConfirmCard } from '@/components/cart/OrderConfirmCard'
 import type { CheckoutSuccessPayload, CheckoutDetailsInput, OrderResult } from '@/types'
 
+
+type CheckoutFailureResponse = {
+  error?: string
+  reason?: string
+  details?: string
+}
+
+function checkoutFailureMessage(data: CheckoutFailureResponse) {
+  return data.error || data.reason || 'Checkout failed. Please try again.'
+}
+
+function logCheckoutFailure(source: string, res: Response, data: CheckoutFailureResponse) {
+  if (!res.ok) {
+    console.error(`[${source}] Checkout failed`, {
+      status: res.status,
+      error: data.error,
+      reason: data.reason,
+      details: data.details,
+    })
+  }
+}
 interface Props {
   open: boolean
   onClose: () => void
@@ -105,6 +126,7 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
         }),
       })
       const data = await res.json()
+      logCheckoutFailure('cart-confirm', res, data)
       if (data.orderResult) {
         const snapshot = checkoutItems.map((i) => ({ ...i }))
         checkoutItems.forEach((i) => removeItem(i.id))
@@ -135,10 +157,8 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
         setPendingDetails(null)
         setPreview(null)
         onClose()
-      } else if (data.error) {
-        setCheckoutError(data.error)
       } else {
-        setCheckoutError('Checkout failed. Please try again.')
+        setCheckoutError(checkoutFailureMessage(data))
       }
     } catch {
       setCheckoutError('A network error occurred. Please try again.')

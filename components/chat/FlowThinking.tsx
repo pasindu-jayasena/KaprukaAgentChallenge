@@ -9,7 +9,7 @@ interface Props {
   fallback?: string
 }
 
-export function FlowThinking({ events, fallback = 'Anu is thinking through it...' }: Props) {
+export function FlowThinking({ events, fallback = 'Anu is thinking...' }: Props) {
   const hasReal = events.length > 0
 
   return (
@@ -18,7 +18,7 @@ export function FlowThinking({ events, fallback = 'Anu is thinking through it...
       <div className="glass-card min-w-[240px] max-w-full rounded-[20px] p-4 sm:p-5">
         <div className="mb-3 flex items-center gap-2">
           <p className="font-display text-[15px] font-semibold text-kapruka-header dark:text-[var(--text-primary)]">
-            {hasReal ? fallback : 'Anu is thinking through it'}
+            {hasReal ? fallback : 'Anu is thinking'}
           </p>
           {!hasReal && (
             <span className="flex items-center gap-1" aria-hidden>

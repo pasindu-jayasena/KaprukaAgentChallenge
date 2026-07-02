@@ -36,6 +36,7 @@ export function sanitizeCreateOrderArgs(
 
   const sender: Record<string, unknown> = {
     name: String(senderIn.name ?? recipient.name ?? 'Kapruka Customer'),
+    email: String(senderIn.email ?? args.sender_email ?? args.senderEmail ?? 'guest@kapruka.com'),
     anonymous: senderIn.anonymous === true,
   }
 

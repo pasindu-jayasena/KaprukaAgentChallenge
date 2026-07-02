@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { Volume2, VolumeX } from 'lucide-react'
 import { AppShell } from '@/components/shell/AppShell'
 import { RecentSessionsSidebar } from '@/components/chat/RecentSessionsSidebar'
 import { ProgressInputBar } from '@/components/chat/ProgressInputBar'
@@ -43,6 +44,7 @@ import type {
 } from '@/types'
 import { formatCheckoutUserDisplay, enrichMessageForModel } from '@/lib/conversation-context'
 import { useRecipientStore } from '@/store/recipientStore'
+import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 
 function getGreeting(uiLang: string): string {
   if (uiLang === 'si') return ANU_GREETINGS.si
@@ -61,6 +63,7 @@ function AnuChatInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { messages, uiLang } = useLanguage()
+  const { supported: ttsSupported, speakingId, speak } = useTextToSpeech(uiLang)
   const cartItems = useCartStore((s) => s.items)
   const removeItems = useCartStore((s) => s.removeItems)
   const savedProfiles = useRecipientStore((s) => s.profiles)
@@ -316,7 +319,7 @@ function AnuChatInner() {
                 else if (payload.type === 'order_preview')
                   displayText =
                     payload.text ??
-                    'Please review your order below — tap Confirm when ready to get your payment link.'
+                    'Please review your order below - tap Confirm when ready to get your payment link.'
                 else if (payload.type === 'order_tracking')
                   displayText = payload.rawText ?? 'I found the order status.'
                 else displayText = 'Got it!'
@@ -721,13 +724,31 @@ function AnuChatInner() {
                     <div className="min-w-0 flex-1 space-y-2.5">
                       {(msg.content || isLastStreaming) && (
                         <div className="bubble-ai">
-                          {msg.content}
-                          {isLastStreaming && isStreaming && !statusLines.length && (
-                            <span
-                              className="ml-1 inline-block h-4 w-[2px] bg-[var(--kap-purple)]"
-                              style={{ animation: 'cursorBlink 1s ease-in-out infinite' }}
-                            />
-                          )}
+                          <div className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                              {msg.content}
+                              {isLastStreaming && isStreaming && !statusLines.length && (
+                                <span
+                                  className="ml-1 inline-block h-4 w-[2px] bg-[var(--kap-purple)]"
+                                  style={{ animation: 'cursorBlink 1s ease-in-out infinite' }}
+                                />
+                              )}
+                            </span>
+                            {ttsSupported && msg.content.trim() && !isLastStreaming && (
+                              <button
+                                type="button"
+                                onClick={() => speak(`assistant-${i}`, msg.content)}
+                                aria-label={speakingId === `assistant-${i}` ? 'Stop reading message' : 'Read message aloud'}
+                                className="-mr-1 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-kapruka-header/70 transition hover:bg-kapruka-header/10 hover:text-kapruka-header"
+                              >
+                                {speakingId === `assistant-${i}` ? (
+                                  <VolumeX className="h-3.5 w-3.5" strokeWidth={2} />
+                                ) : (
+                                  <Volume2 className="h-3.5 w-3.5" strokeWidth={2} />
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                       {msg.payload?.type === 'product_trio' && (
@@ -844,4 +865,3 @@ export function AnuChat() {
     </Suspense>
   )
 }
-

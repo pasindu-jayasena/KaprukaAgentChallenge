@@ -66,13 +66,16 @@ function friendlyError(errorMsg: string): string {
 }
 
 
-function checkoutErrorBody(error: unknown): CheckoutErrorBody {
+function checkoutErrorBody(error: unknown): CheckoutErrorBody & { retryable?: boolean } {
   const msg = error instanceof Error ? error.message : 'Checkout failed'
-  const body: CheckoutErrorBody = { error: friendlyError(msg) }
+  const body: CheckoutErrorBody & { retryable?: boolean } = { error: friendlyError(msg) }
 
   if (error instanceof KaprukaOrderParseError) {
     body.reason = error.message
     if (error.rawSnippet) body.details = maskSensitive(error.rawSnippet)
+    body.retryable = (error as KaprukaOrderParseError & { retryable?: boolean }).retryable ?? false
+  } else if (error instanceof Error && /rate_limit|timeout|ECONNRE|fetch failed/i.test(error.message)) {
+    body.retryable = true
   }
 
   return body
@@ -170,6 +173,8 @@ export async function POST(req: Request) {
   } catch (e) {
     const body = checkoutErrorBody(e)
     console.error('Checkout error:', body.reason ?? body.error, body.details ?? '')
-    return NextResponse.json(body, { status: 400 })
+    // Use 502 for upstream/MCP failures (retryable), 400 for validation/data issues
+    const status = body.retryable ? 502 : 400
+    return NextResponse.json(body, { status })
   }
 }

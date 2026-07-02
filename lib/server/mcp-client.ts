@@ -1,5 +1,28 @@
 const MCP_CACHE = new Map<string, { text: string; ts: number }>()
 export const CACHE_TTL = 10 * 60 * 1000
+
+const ORDER_MAX_RETRIES = 2
+const ORDER_RETRY_BASE_MS = 800
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableError(text: string): boolean {
+  const lower = text.toLowerCase()
+  return (
+    lower.includes('rate_limit') ||
+    lower.includes('timeout') ||
+    lower.includes('internal server error') ||
+    lower.includes('service unavailable') ||
+    lower.includes('bad gateway') ||
+    lower.includes('connection') ||
+    lower.startsWith('error') && !lower.includes('city_not_deliverable') &&
+    !lower.includes('product_unavailable') &&
+    !lower.includes('out_of_stock') &&
+    !lower.includes('invalid_date')
+  )
+}
 export const CACHEABLE = new Set([
   'kapruka_search_products',
   'kapruka_get_product',
@@ -77,6 +100,30 @@ export class KaprukaMCPClient {
     return this._initPromise
   }
 
+  private extractText(
+    result: unknown
+  ): string {
+    if (
+      result &&
+      typeof result === 'object' &&
+      'error' in result &&
+      (result as { error?: { message?: string } }).error?.message ===
+        'rate_limited'
+    ) {
+      return 'RATE_LIMIT: Try again in about 30 seconds.'
+    }
+
+    const content = (
+      result as { result?: { content?: Array<{ type: string; text: string }> } }
+    )?.result?.content
+    return Array.isArray(content)
+      ? content
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n')
+      : JSON.stringify(result)
+  }
+
   async callTool(name: string, args: Record<string, unknown>) {
     const wantsJSON =
       CACHEABLE.has(name) || name === 'kapruka_create_order'
@@ -91,29 +138,42 @@ export class KaprukaMCPClient {
     }
 
     await this.init()
+
+    // For order creation, retry on transient failures
+    if (name === 'kapruka_create_order') {
+      let lastText = ''
+      for (let attempt = 0; attempt <= ORDER_MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = ORDER_RETRY_BASE_MS * Math.pow(2, attempt - 1)
+          console.log(`[MCP] Retry ${attempt}/${ORDER_MAX_RETRIES} for ${name} after ${delay}ms`)
+          await sleep(delay)
+        }
+        try {
+          const result = await this._rpc('tools/call', {
+            name,
+            arguments: { params: callArgs },
+          })
+          lastText = this.extractText(result)
+          // If it looks like a real failure that's transient, retry
+          if (isRetryableError(lastText) && attempt < ORDER_MAX_RETRIES) {
+            console.warn(`[MCP] Transient error on ${name} attempt ${attempt + 1}:`, lastText.slice(0, 200))
+            continue
+          }
+          return lastText
+        } catch (err) {
+          console.error(`[MCP] ${name} attempt ${attempt + 1} threw:`, err)
+          if (attempt >= ORDER_MAX_RETRIES) throw err
+        }
+      }
+      return lastText
+    }
+
+    // Normal (non-order) tool call — no retry
     const result = await this._rpc('tools/call', {
       name,
       arguments: { params: callArgs },
     })
-    if (
-      result &&
-      typeof result === 'object' &&
-      'error' in result &&
-      (result as { error?: { message?: string } }).error?.message ===
-        'rate_limited'
-    ) {
-      return 'RATE_LIMIT: Try again in about 30 seconds.'
-    }
-
-    const content = (
-      result as { result?: { content?: Array<{ type: string; text: string }> } }
-    )?.result?.content
-    const text = Array.isArray(content)
-      ? content
-          .filter((b) => b.type === 'text')
-          .map((b) => b.text)
-          .join('\n')
-      : JSON.stringify(result)
+    const text = this.extractText(result)
 
     if (key && !text.startsWith('Error')) {
       MCP_CACHE.set(key, { text, ts: Date.now() })

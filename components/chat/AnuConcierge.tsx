@@ -115,6 +115,10 @@ function AnuChatInner() {
   const [statusLines, setStatusLines] = useState<StatusEvent[]>([])
   const [journeyStep, setJourneyStep] = useState(0)
   const [suggestedChips, setSuggestedChips] = useState<string[]>([])
+  // Mic recognition language: follows the chat once the customer starts
+  // conversing, otherwise the UI language
+  const [chatMicLang, setChatMicLang] = useState<UiLang | null>(null)
+  const micLang = chatMicLang ?? uiLang
   const bottomRef = useRef<HTMLDivElement>(null)
   const autoSent = useRef(false)
   const loaded = useRef(false)
@@ -159,23 +163,9 @@ function AnuChatInner() {
       setChatMessages(session.messages)
       setJourneyStep(session.journeyStep ?? 0)
 
-      // Restore the cart state for this specific chat session to prevent "mixing" orders
-      if (session.cartSnapshot?.length) {
-        useCartStore.getState().restoreCart(session.cartSnapshot)
-      } else {
-        const cancelledCheckout = session.messages.find(
-          (m) => m.payload?.type === 'checkout' && m.payload.cancelled
-        )
-        const restore =
-          cancelledCheckout?.payload?.type === 'checkout'
-            ? cancelledCheckout.payload.cartRestore
-            : undefined
-        if (restore?.length) {
-          useCartStore.getState().restoreCart(restore)
-        } else {
-          useCartStore.getState().clearCart()
-        }
-      }
+      // The cart is GLOBAL: it keeps everything the customer added across all
+      // chats. Switching or opening a chat never clears or replaces it — each
+      // chat only shows its own product cards, while the cart drawer shows all.
 
       router.replace(`/chat?session=${id}`, { scroll: false })
     },
@@ -293,6 +283,15 @@ function AnuChatInner() {
           : detectedRaw
       if (wantsEnglish) lastLocalChatLang.current = null
       if (detected !== 'en') lastLocalChatLang.current = detected
+      // Point the mic's recognition engine at the language the customer is
+      // actually conversing in (singlish speakers speak Sinhala, etc.)
+      setChatMicLang(
+        detected === 'si' || detected === 'singlish'
+          ? 'si'
+          : detected === 'ta' || detected === 'tanglish'
+          ? 'ta'
+          : 'en'
+      )
       setStatusLines([])
       setSuggestedChips([])
 
@@ -955,6 +954,7 @@ function AnuChatInner() {
             onSubmit={sendMessage}
             placeholder={messages.chat.placeholder}
             uiLang={uiLang}
+            speechLang={micLang}
             journeyStep={journeyStep}
             loading={isStreaming}
             docked

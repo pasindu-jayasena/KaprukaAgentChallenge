@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { UiLang } from '@/types'
+import { useLanguage } from '@/providers/LanguageProvider'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 
 interface VoiceOutputContextValue {
@@ -29,13 +30,8 @@ const UNMUTE_CONFIRMATION: Record<UiLang, string> = {
   ta: 'சரி, இனி என் பதில்களை வாசிக்கிறேன்!',
 }
 
-export function VoiceOutputProvider({
-  uiLang,
-  children,
-}: {
-  uiLang: UiLang
-  children: ReactNode
-}) {
+export function VoiceOutputProvider({ children }: { children: ReactNode }) {
+  const { uiLang } = useLanguage()
   const [muted, setMuted] = useState(true)
   const { supported, speakingId, speak, stop, prime } = useTextToSpeech(uiLang)
 

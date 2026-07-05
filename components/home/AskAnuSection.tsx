@@ -56,9 +56,12 @@ export function AskAnuSection() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.5 }}
       >
-        <div className="mb-6 flex items-center justify-center gap-2 text-center">
-          <MessageCircle className="h-5 w-5 text-[var(--kap-purple)]" />
-          <h2 className="font-display text-lg font-bold text-[var(--text-primary)] sm:text-xl">
+        <div className="mb-6 text-center">
+          <h2 className="font-display text-lg font-bold leading-snug text-[var(--text-primary)] sm:text-xl">
+            <MessageCircle
+              className="mr-2 inline-block h-5 w-5 shrink-0 align-[-0.2em] text-[var(--kap-purple)]"
+              aria-hidden
+            />
             {t}
           </h2>
         </div>

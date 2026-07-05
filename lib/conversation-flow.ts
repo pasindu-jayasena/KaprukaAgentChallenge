@@ -101,11 +101,35 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
     /\b(could not find|hambune naha|hambune na|kidaikkala|gift.quality options)\b/.test(last)
   if (isBudgetNegotiation) return 'shopping'
 
-  const checkoutLanguage =
-    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|deliver to|delivery date|sender name|who is sending|checkout now|ready to pay|personal message|special delivery instructions)\b/.test(recent) ||
-    /\b(checkout karannada|checkout pannalama|order eka receive karanne|gift eka katada)\b/.test(recent)
+  // Checkout collection starts ONLY from the CUSTOMER's own words — never
+  // because Anu merely suggested "…or checkout now?" in a reply. Once started,
+  // it continues while the last assistant turn is an actual collection question.
+  const lastUserText = clean(
+    [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+  )
+  const userWantsCheckout =
+    /\b(checkout|check out|buy now|place (the |my )?order|proceed to pay|pay now|ready to pay)\b/.test(lastUserText) ||
+    /\b(checkout karanna|checkout karannada|checkout pannalama|order karanna|order pannunga)\b/.test(lastUserText)
+  const assistantIsCollecting =
+    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|delivery date|who is sending|personal message|special delivery instructions)\b/.test(last) ||
+    /\b(gift eka katada|receive karanne katada|ewannako|anuppunga)\b/.test(last)
 
-  return cart.length > 0 && checkoutLanguage ? 'checkout_collecting' : 'shopping'
+  return cart.length > 0 && (userWantsCheckout || assistantIsCollecting)
+    ? 'checkout_collecting'
+    : 'shopping'
+}
+
+/**
+ * Mid-collection, the customer may change their mind: "Add more items",
+ * "show me chocolates", "wait", "cancel". Those are NOT answers to the
+ * current question — hand the turn to the LLM instead of re-asking.
+ */
+export function wantsToLeaveCheckout(text: string): boolean {
+  const t = clean(text)
+  return (
+    /\b(add more|more items|add (something|anything) else|show me|show more|find|search|browse|something else|different|not now|later|cancel|stop|wait|hold on)\b/.test(t) ||
+    /\b(thawa|wena ekak|passe|nawathanna|epa checkout|innum|vera|venda checkout)\b/.test(t)
+  )
 }
 
 function looksLikeRecipientName(text: string) {
@@ -319,6 +343,11 @@ export function continueCheckoutCollection(
 ): CheckoutContinuation | null {
   if (!cart.length || inferConversationMode(messages, cart) !== 'checkout_collecting') return null
 
+  // Customer changed their mind mid-checkout ("Add more items", "show me…",
+  // "wait") — this is not an answer, so hand the turn to the LLM.
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+  if (lastUser && wantsToLeaveCheckout(stripCheckoutMarker(lastUser.content))) return null
+
   const draft = collectCheckoutDraft(messages)
   const missing =
     !draft.recipientName ? 'name' :
@@ -331,10 +360,14 @@ export function continueCheckoutCollection(
     null
 
   if (missing) {
+    const ask = askText(missing, draft, chatLang)
+    // The customer's reply didn't advance the draft at all — asking the exact
+    // same question again is a loop. Let the LLM read what they actually said.
+    if (clean(ask) === clean(lastAssistant(messages))) return null
     return {
       payload: {
         type: 'chat',
-        text: askText(missing, draft, chatLang),
+        text: ask,
         chips: missing === 'date' ? ['Tomorrow', 'This weekend'] :
                missing === 'giftMessage' ? ['No, skip', 'Happy Birthday!', 'With love'] :
                missing === 'special' ? ['No, skip', 'Call before delivery'] :

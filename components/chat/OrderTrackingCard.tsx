@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { CheckCircle2, Circle, Copy, MapPin, PackageCheck, ReceiptText, Truck } from 'lucide-react'
+import { useLanguage } from '@/providers/LanguageProvider'
 import type { OrderTracking } from '@/types'
 
 interface Props {
@@ -15,11 +16,10 @@ function formatAmount(amount?: { value: string; currency: string }) {
   return amount.currency === 'LKR' ? 'Rs. ' + value : amount.currency + ' ' + value
 }
 
-function cleanValue(value?: string) {
-  return value?.trim() || 'Not available'
-}
-
 export function OrderTrackingCard({ tracking }: Props) {
+  const { messages } = useLanguage()
+  const t = messages.tracking
+  const cleanValue = (value?: string) => value?.trim() || t.notAvailable
   const [copied, setCopied] = useState(false)
   const orderNumber = tracking.orderNumber || tracking.ref
   const delivered = tracking.status.toLowerCase() === 'delivered'
@@ -50,12 +50,12 @@ export function OrderTrackingCard({ tracking }: Props) {
               </span>
               {tracking.liveTrackingAvailable && (
                 <span className="rounded-full bg-white/15 px-2 py-1 text-[11px] font-semibold text-white/85">
-                  Live tracking
+                  {t.liveTracking}
                 </span>
               )}
             </div>
             <h3 className="truncate font-display text-lg font-extrabold leading-tight">
-              Order {orderNumber}
+              {t.order} {orderNumber}
             </h3>
             {tracking.pnref && <p className="mt-0.5 text-xs text-white/75">PN Ref: {tracking.pnref}</p>}
           </div>
@@ -63,32 +63,32 @@ export function OrderTrackingCard({ tracking }: Props) {
             type="button"
             onClick={copyOrder}
             className="shrink-0 rounded-full bg-white/12 p-2 text-white transition-colors hover:bg-white/20 active:scale-95"
-            aria-label="Copy order number"
-            title="Copy order number"
+            aria-label={t.copyOrderNumber}
+            title={t.copyOrderNumber}
           >
             <Copy className="h-4 w-4" />
           </button>
         </div>
-        {copied && <p className="mt-2 text-xs font-semibold text-[#FCE22A]">Copied order number</p>}
+        {copied && <p className="mt-2 text-xs font-semibold text-[#FCE22A]">{t.copiedOrderNumber}</p>}
       </div>
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
           <div className="rounded-xl bg-[var(--bg-page)] p-3">
-            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">Delivery</p>
+            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">{t.delivery}</p>
             <p className="mt-1 font-semibold text-[var(--text-primary)]">{cleanValue(tracking.deliveryDate)}</p>
           </div>
           <div className="rounded-xl bg-[var(--bg-page)] p-3">
-            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">Amount</p>
-            <p className="mt-1 font-semibold text-[var(--text-primary)]">{amount ?? 'Not available'}</p>
+            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">{t.amount}</p>
+            <p className="mt-1 font-semibold text-[var(--text-primary)]">{amount ?? t.notAvailable}</p>
           </div>
           <div className="rounded-xl bg-[var(--bg-page)] p-3">
-            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">City</p>
+            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">{t.city}</p>
             <p className="mt-1 truncate font-semibold text-[var(--text-primary)]">{cleanValue(tracking.recipient?.city)}</p>
           </div>
           <div className="rounded-xl bg-[var(--bg-page)] p-3">
-            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">Latest</p>
-            <p className="mt-1 line-clamp-2 font-semibold text-[var(--text-primary)]">{tracking.latestUpdate?.timestamp ?? tracking.shippedDate ?? tracking.orderDate ?? 'Not available'}</p>
+            <p className="font-bold uppercase tracking-wide text-[var(--text-muted)]">{t.latest}</p>
+            <p className="mt-1 line-clamp-2 font-semibold text-[var(--text-primary)]">{tracking.latestUpdate?.timestamp ?? tracking.shippedDate ?? tracking.orderDate ?? t.notAvailable}</p>
           </div>
         </div>
 
@@ -103,7 +103,7 @@ export function OrderTrackingCard({ tracking }: Props) {
           <div className="min-w-0 rounded-xl border border-[var(--border-light)] p-3">
             <div className="mb-2 flex items-center gap-2 font-bold text-[var(--text-primary)]">
               <MapPin className="h-4 w-4 text-[#401F60] dark:text-[#FCE22A]" />
-              Recipient
+              {t.recipient}
             </div>
             <p className="font-semibold text-[var(--text-primary)]">{cleanValue(tracking.recipient?.name)}</p>
             <p className="mt-1 break-words text-xs leading-relaxed text-[var(--text-secondary)]">
@@ -115,10 +115,10 @@ export function OrderTrackingCard({ tracking }: Props) {
           <div className="min-w-0 rounded-xl border border-[var(--border-light)] p-3">
             <div className="mb-2 flex items-center gap-2 font-bold text-[var(--text-primary)]">
               <ReceiptText className="h-4 w-4 text-[#401F60] dark:text-[#FCE22A]" />
-              Message
+              {t.message}
             </div>
             <p className="break-words text-xs leading-relaxed text-[var(--text-secondary)]">
-              {tracking.greetingMessage || tracking.specialInstructions || 'No message attached.'}
+              {tracking.greetingMessage || tracking.specialInstructions || t.noMessage}
             </p>
           </div>
         </div>
@@ -126,7 +126,7 @@ export function OrderTrackingCard({ tracking }: Props) {
         {progress.length > 0 && (
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
-              Delivery timeline
+              {t.deliveryTimeline}
             </p>
             <ol className="space-y-0">
               {progress.map((step, i) => {

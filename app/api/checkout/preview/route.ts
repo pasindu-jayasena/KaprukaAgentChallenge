@@ -5,6 +5,7 @@ import {
   normalizeCheckoutDetails,
   validateCheckoutDetails,
 } from '@/lib/checkout-validation'
+import { checkRateLimit, clientKeyFromRequest } from '@/lib/server/rate-limit'
 
 const schema = z.object({
   cart: z.array(
@@ -31,6 +32,14 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const rate = await checkRateLimit('checkout', clientKeyFromRequest(req))
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds ?? 30) } }
+      )
+    }
+
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid checkout details.' }, { status: 400 })

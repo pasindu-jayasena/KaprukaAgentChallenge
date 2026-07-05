@@ -153,7 +153,7 @@ export function PlanBoardCard({ plan, onConfirm, processing = false }: Props) {
               <p className="text-[var(--text-primary)]">{plan.delivery.city}</p>
               <div className="mt-1 flex items-center gap-1.5 text-[var(--text-muted)]">
                 <Calendar className="h-3.5 w-3.5" />
-                {plan.delivery.date}
+                {formatDate(plan.delivery.date, uiLang)}
                 {deliveryFee > 0 && ` · Rs. ${deliveryFee.toLocaleString()} fee`}
               </div>
             </section>

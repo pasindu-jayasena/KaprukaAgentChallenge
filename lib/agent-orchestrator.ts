@@ -1,4 +1,3 @@
-import { runAgenticShoppingShortcut } from '@/lib/agentic-shopping'
 import type { ChatLang, ChatPayload } from '@/types'
 import type { KaprukaMCPClient } from '@/lib/server/mcp-client'
 
@@ -127,7 +126,11 @@ function exactMatchFastPath(text: string): ExactMatch | null {
   const isQuestion =
     /\b(which|best|better|compare|difference|will she|would she|should i|kamathi weida|hoda mokakda|meken)\b/.test(t)
 
-  if (!hasShoppingIntent || isQuestion) return null
+  // Reject cart actions ("add the Kandos one to my cart") — the LLM must
+  // handle those so it can emit a real <ADD_TO_CART> tag instead of re-searching
+  const isCartAction = /\b(add|cart|basket|danna|daanna|dapan|serthu|podu)\b/.test(t)
+
+  if (!hasShoppingIntent || isQuestion || isCartAction) return null
 
   const budget = parseBudget(text)
   return { category, query, budget }
@@ -136,8 +139,8 @@ function exactMatchFastPath(text: string): ExactMatch | null {
 // ─── Search and format (pure data operations) ───
 
 async function search(mcp: KaprukaMCPClient, q: string, budget: number | undefined, emit: StatusEmitter) {
-  emit('kapruka_search_products', { q, max_price: budget, limit: 10 })
-  const raw = await mcp.callTool('kapruka_search_products', { q, ...(budget ? { max_price: budget } : {}), limit: 10 })
+  emit('kapruka_search_products', { q, max_price: budget, limit: 18 })
+  const raw = await mcp.callTool('kapruka_search_products', { q, ...(budget ? { max_price: budget } : {}), limit: 18 })
   return extractJson(raw)?.results ?? []
 }
 
@@ -161,7 +164,7 @@ function toProducts(results: SearchProduct[], budget?: number) {
       seen.add(p.id)
       return true
     })
-    .slice(0, 6)
+    .slice(0, 12)
 }
 
 // ─── Main pipeline ───
@@ -215,5 +218,5 @@ export async function runAgenticShoppingPipeline(opts: {
   // It should think like a human sales agent — read the situation,
   // decide what to do, and respond naturally.
 
-  return runAgenticShoppingShortcut(opts)
+  return null
 }

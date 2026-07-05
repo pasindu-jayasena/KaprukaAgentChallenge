@@ -4,6 +4,7 @@ import { runClaudeChat, isClaudeAvailable, isClaudeQuotaError } from '@/lib/serv
 import { runGroqChat } from '@/lib/server/groq-chat'
 import { chatRequestSchema } from '@/schemas/chat-request'
 import { getDeviceId } from '@/lib/server/session-cookies'
+import { checkRateLimit, clientKeyFromRequest } from '@/lib/server/rate-limit'
 import { getProfile, updateProfile } from '@/lib/server/user-memory'
 import { getCheckoutPreview } from '@/lib/checkout-preview'
 import { orderArgsToCheckoutDetails } from '@/lib/order-args'
@@ -27,7 +28,7 @@ import {
   forcePlanToCollectDetails,
   normalizeCheckoutDetails,
 } from '@/lib/checkout-validation'
-import type { CartItem, ChatPayload, CheckoutDetailsInput } from '@/types'
+import type { CartAction, CartItem, ChatPayload, CheckoutDetailsInput } from '@/types'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
@@ -82,10 +83,34 @@ function stripBlocks(text: string) {
     .replace(/<PLAN_BOARD>[\s\S]*?<\/PLAN_BOARD>/gi, '')
     .replace(/<CHIPS>[\s\S]*?<\/CHIPS>/gi, '')
     .replace(/<ORDER_TRACKING>[\s\S]*?<\/ORDER_TRACKING>/gi, '')
+    .replace(/<ADD_TO_CART>[\s\S]*?<\/ADD_TO_CART>/gi, '')
     .replace(/<function[\s\S]*?<\/function>/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/CHECKOUT_DETAILS:[\s\S]*?(?=\n\n|$)/gi, '')
     .trim()
+}
+
+/**
+ * Parse and validate the model's <ADD_TO_CART> tag. Invalid/hallucinated tags
+ * are dropped here so the client never mutates the cart on bad data.
+ */
+function parseCartAction(text: string): CartAction | undefined {
+  const block = parseBlock(text, 'ADD_TO_CART')
+  if (!block.data || typeof block.data !== 'object') return undefined
+  const raw = block.data as Record<string, unknown>
+  const id = String(raw.id ?? raw.product_id ?? '').trim()
+  const name = String(raw.name ?? '').trim()
+  const price = Number(raw.price)
+  const quantity = Math.min(Math.max(Math.round(Number(raw.quantity) || 1), 1), 10)
+  if (!id || !name || !Number.isFinite(price) || price <= 0) return undefined
+  return {
+    id,
+    name,
+    price,
+    image: typeof raw.image === 'string' ? raw.image : typeof raw.image_url === 'string' ? raw.image_url : null,
+    url: typeof raw.url === 'string' ? raw.url : null,
+    quantity,
+  }
 }
 
 function parseChips(text: string): string[] | null {
@@ -102,11 +127,12 @@ function parseChips(text: string): string[] | null {
 function buildPayload(fullText: string): ChatPayload {
   const text = fullText
   const chips = parseChips(text) ?? undefined
+  const cartAction = parseCartAction(text)
 
   const trio = parseBlock(text, 'PRODUCT_TRIO')
   if (trio.data) {
     const rawText = stripBlocks(text)
-    return { type: 'product_trio', trio: trio.data, rawText: rawText || undefined, chips }
+    return { type: 'product_trio', trio: trio.data, rawText: rawText || undefined, chips, cartAction }
   }
 
   const plan = parseBlock(text, 'PLAN_BOARD')
@@ -125,6 +151,7 @@ function buildPayload(fullText: string): ChatPayload {
     type: 'chat',
     text: stripBlocks(text) || 'Could you rephrase that?',
     chips,
+    cartAction,
   }
 }
 
@@ -210,6 +237,15 @@ export async function POST(req: Request) {
   } catch {
     // Cookie access may fail in some contexts
   }
+
+  const rate = await checkRateLimit('chat', clientKeyFromRequest(req, deviceId))
+  if (!rate.allowed) {
+    return new Response('Too many requests', {
+      status: 429,
+      headers: { 'Retry-After': String(rate.retryAfterSeconds ?? 30) },
+    })
+  }
+
   const userProfile = getProfile(deviceId)
 
   // Update chat style from detected language
@@ -385,7 +421,15 @@ export async function POST(req: Request) {
               : chatLang === 'singlish' || explicitEnglishRequest
               ? getSinglishDirectReply(lastUserMessage.content)
               : getEnglishDirectReply(lastUserMessage.content)
-          if (directReply) {
+          // Never repeat the same canned line — if we already said this recently,
+          // fall through to the LLM so the reply reacts to the actual message.
+          const recentAssistant = messages
+            .filter((m) => m.role === 'assistant')
+            .slice(-6)
+          const alreadySaid =
+            !!directReply &&
+            recentAssistant.some((m) => m.content.includes(directReply.text.trim()))
+          if (directReply && !alreadySaid) {
             emit({
               type: 'final',
               payload: {
@@ -525,11 +569,20 @@ export async function POST(req: Request) {
         emit({ type: 'final', payload })
       } catch (e) {
         console.error('chat route error:', e)
+        const fallbackByLang: Record<string, { text: string; chip: string }> = {
+          si: { text: 'අයියෝ, පොඩි ප්‍රශ්නයක් වුණා. තව පාරක් try කරමුද?', chip: 'ආයෙත් try කරන්න' },
+          ta: { text: 'ஐயோ, ஒரு சிறு பிரச்சனை வந்துவிட்டது. மீண்டும் முயற்சிக்கலாமா?', chip: 'மீண்டும் முயற்சி' },
+          singlish: { text: 'Aiyo, poddak issue ekak una. Aye try karamu da?', chip: 'Try again' },
+          tanglish: { text: 'Aiyo, oru chinna problem. Thirumba try pannalama?', chip: 'Try again' },
+          en: { text: 'Oh no, I hit a snag on my end. Shall we try that again?', chip: 'Try again' },
+        }
+        const fallback = fallbackByLang[chatLang] ?? fallbackByLang.en
         emit({
           type: 'final',
           payload: {
             type: 'chat',
-            text: 'Something went wrong. Please try again.',
+            text: fallback.text,
+            chips: [fallback.chip],
           },
         })
       } finally {

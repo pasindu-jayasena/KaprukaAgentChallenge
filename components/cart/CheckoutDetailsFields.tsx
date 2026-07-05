@@ -239,6 +239,7 @@ export function CheckoutDetailsFields({
           <input
             required
             type="date"
+            min={new Date().toISOString().slice(0, 10)}
             value={savedDeliveryDate}
             onChange={(e) => setSavedDeliveryDate(e.target.value)}
             className={inputClass}
@@ -280,7 +281,7 @@ export function CheckoutDetailsFields({
             setRecipientNameInput(form.recipient.name)
             setStep('recipient-name')
           }}
-          className="text-xs text-kapruka-header underline"
+          className="text-xs text-kapruka-header dark:text-white underline"
         >
           {messages.form.pickSavedRecipient}
         </button>
@@ -340,11 +341,12 @@ export function CheckoutDetailsFields({
       </div>
 
       {variant === 'chat' && (
-        <p className="text-xs font-semibold text-kapruka-header">{messages.form.recipient}</p>
+        <p className="text-xs font-semibold text-kapruka-header dark:text-white">{messages.form.recipient}</p>
       )}
 
       <input
         required
+        autoComplete="name"
         placeholder={messages.form.name}
         value={form.recipient.name}
         onChange={(e) => updateRecipient({ name: e.target.value })}
@@ -352,6 +354,9 @@ export function CheckoutDetailsFields({
       />
       <input
         required
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
         placeholder={messages.form.phone}
         value={form.recipient.phone}
         onChange={(e) => updateRecipient({ phone: e.target.value })}
@@ -359,6 +364,7 @@ export function CheckoutDetailsFields({
       />
       <input
         required
+        autoComplete="street-address"
         placeholder={messages.form.address}
         value={form.recipient.address}
         onChange={(e) => updateRecipient({ address: e.target.value })}
@@ -367,6 +373,7 @@ export function CheckoutDetailsFields({
       <div className="grid grid-cols-2 gap-2">
         <input
           required
+          autoComplete="address-level2"
           placeholder={messages.form.city}
           value={form.recipient.city}
           onChange={(e) => updateRecipient({ city: e.target.value })}
@@ -375,6 +382,7 @@ export function CheckoutDetailsFields({
         <input
           required
           type="date"
+          min={new Date().toISOString().slice(0, 10)}
           value={form.recipient.date}
           onChange={(e) => updateRecipient({ date: e.target.value })}
           className={inputClass}

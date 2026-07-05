@@ -784,6 +784,11 @@ html[lang='ta'] body { font-family: var(--font-noto-tamil), var(--font-source-sa
   box-shadow: none;
   opacity: 0.5;
 }
+/* Keep the arrow visible when disabled — the brand-purple icon disappears
+   against the dark disabled background in dark mode */
+.input-send-btn:disabled svg {
+  color: var(--text-muted);
+}
 
 /* ═══════════════════════════════════════════════
    SESSIONS SIDEBAR (ChatGPT-style)

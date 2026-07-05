@@ -42,7 +42,7 @@ npm run lint
 npm run build
 ```
 
-Known current lint state: `lib/conversation-flow.ts` may report an existing unused `lower` warning. Do not treat that as caused by unrelated changes unless you touched that area.
+Current lint/typecheck/build state is clean (zero warnings/errors). Keep it that way — new changes should not introduce lint warnings.
 
 ## Environment Variables
 

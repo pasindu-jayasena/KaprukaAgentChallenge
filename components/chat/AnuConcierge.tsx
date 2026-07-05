@@ -471,7 +471,7 @@ function AnuChatInner() {
 
         const chipSource =
           payload && 'chips' in payload ? payload.chips : undefined
-        const inferred = inferChipsFromAssistantText(finalDisplayText, uiLang)
+        const inferred = inferChipsFromAssistantText(finalDisplayText)
         const checkoutCollection = payload?.type === 'chat' && isCheckoutCollectionText(finalDisplayText)
         if (appliedCartAction) {
           setSuggestedChips(getAfterAddToCartChips(uiLang))
@@ -484,7 +484,7 @@ function AnuChatInner() {
         } else if (checkoutCollection) {
           setSuggestedChips(chipSource ?? [])
         } else if (payload?.type === 'plan_board' && !(payload as { plan?: PlanBoard }).plan?.occasion) {
-          setSuggestedChips(mergeChips(chipSource, getOccasionChips(uiLang)))
+          setSuggestedChips(mergeChips(chipSource, getOccasionChips()))
         } else {
           setSuggestedChips(mergeChips(chipSource, inferred))
         }

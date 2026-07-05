@@ -76,7 +76,7 @@ export function buildIntentBlock(messages: ChatTurn[]): string {
 }
 
 // Keep these exports for backward compatibility — other files may import them
-export function isNonShoppingTurn(userMessage: string, messages: ChatTurn[]): boolean {
+export function isNonShoppingTurn(userMessage: string): boolean {
   // Simplified: only return true for very obvious non-shopping turns
   // The LLM handles the nuanced cases now
   const msg = userMessage.trim()

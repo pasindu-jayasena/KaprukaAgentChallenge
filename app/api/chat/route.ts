@@ -533,7 +533,7 @@ export async function POST(req: Request) {
         if (
           payload.type === 'product_trio' &&
           lastUserMessage &&
-          isNonShoppingTurn(lastUserMessage.content, messages)
+          isNonShoppingTurn(lastUserMessage.content)
         ) {
           const answer =
             payload.rawText?.trim() ||

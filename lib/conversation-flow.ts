@@ -104,21 +104,26 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
   if (isBudgetNegotiation) return 'shopping'
 
   // Checkout collection starts ONLY from the CUSTOMER's own words — never
-  // because Anu merely suggested "…or checkout now?" in a reply. Once started,
-  // it continues while the last assistant turn is an actual collection question.
-  const lastUserText = clean(
-    [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+  // because Anu merely suggested "…or checkout now?" in a reply. Once the
+  // customer has said so anywhere in this conversation, stay in collection
+  // mode regardless of how Anu happens to phrase any particular follow-up
+  // question (a past-date rejection, a delivery-unavailable re-ask, etc.) —
+  // matching exact assistant wording here is brittle and has broken twice
+  // (once for hijacking "Add more items", once for losing state after a
+  // past-date correction). wantsToLeaveCheckout() is the deliberate escape
+  // hatch when the customer changes their mind mid-collection.
+  const userWantsCheckout = messages.some(
+    (m) =>
+      m.role === 'user' &&
+      (/\b(checkout|check out|buy now|place (the |my )?order|proceed to pay|pay now|ready to pay)\b/.test(
+        clean(stripCheckoutMarker(m.content))
+      ) ||
+        /\b(checkout karanna|checkout karannada|checkout pannalama|order karanna|order pannunga)\b/.test(
+          clean(stripCheckoutMarker(m.content))
+        ))
   )
-  const userWantsCheckout =
-    /\b(checkout|check out|buy now|place (the |my )?order|proceed to pay|pay now|ready to pay)\b/.test(lastUserText) ||
-    /\b(checkout karanna|checkout karannada|checkout pannalama|order karanna|order pannunga)\b/.test(lastUserText)
-  const assistantIsCollecting =
-    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|delivery date|who is sending|personal message|special delivery instructions)\b/.test(last) ||
-    /\b(gift eka katada|receive karanne katada|ewannako|anuppunga)\b/.test(last)
 
-  return cart.length > 0 && (userWantsCheckout || assistantIsCollecting)
-    ? 'checkout_collecting'
-    : 'shopping'
+  return cart.length > 0 && userWantsCheckout ? 'checkout_collecting' : 'shopping'
 }
 
 /**

@@ -47,3 +47,6 @@ next-env.d.ts
 /Competitors
 .vercel
 CLAUDE.md
+
+# generated project report
+/report/

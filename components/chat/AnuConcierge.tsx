@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { AppShell } from '@/components/shell/AppShell'
@@ -71,6 +71,33 @@ function isFlowPayload(payload: ChatPayload | undefined) {
   return payload?.type === 'order_preview' || payload?.type === 'checkout' || payload?.type === 'order_tracking'
 }
 
+function isCheckoutIntentText(text: string) {
+  return /\b(checkout|check\s?out|place (the |my )?order|buy now|proceed to pay|pay now)\b/i.test(text)
+}
+
+/** Copy + chips for the "this chat's items or the whole cart?" chooser. */
+function buildScopeAsk(uiLang: UiLang, chatCount: number, total: number, otherCount: number) {
+  if (uiLang === 'si') {
+    return {
+      prompt: `ඔයාගේ cart එකේ items ${total}ක් තියෙනවා — මේ chat එකෙන් ${chatCount}ක්, කලින් chats වලින් ${otherCount}ක්. මොනවද checkout කරන්නේ?`,
+      chipChat: `මේ chat එකේ items විතරයි (${chatCount})`,
+      chipAll: `Cart එකේ ඔක්කොම (${total})`,
+    }
+  }
+  if (uiLang === 'ta') {
+    return {
+      prompt: `உங்கள் cart-ல ${total} items இருக்கு — இந்த chat-ல ${chatCount}, முந்தைய chats-ல ${otherCount}. எதை checkout செய்யட்டும்?`,
+      chipChat: `இந்த chat items மட்டும் (${chatCount})`,
+      chipAll: `Cart முழுவதும் (${total})`,
+    }
+  }
+  return {
+    prompt: `Your cart has ${total} items — ${chatCount} from this chat and ${otherCount} added in earlier chats. Which would you like to check out?`,
+    chipChat: `Only this chat's items (${chatCount})`,
+    chipAll: `All cart items (${total})`,
+  }
+}
+
 type CheckoutFailureResponse = {
   error?: string
   reason?: string
@@ -127,6 +154,38 @@ function AnuChatInner() {
   const lastSpokenMessage = useRef<string | null>(null)
   const lastFailedText = useRef<string | null>(null)
 
+  // ── Chat-scoped checkout ──
+  // The cart is global across chats, but at checkout the customer chooses:
+  // only this chat's items, or everything in the cart.
+  const checkoutScopeRef = useRef<'all' | 'chat'>('all')
+  const scopeChosen = useRef(false)
+  const pendingCheckout = useRef<string | null>(null)
+  const scopeChipLabels = useRef<{ chat: string; all: string } | null>(null)
+  const sendMessageRef = useRef<(text: string) => void>(() => {})
+
+  /** Product ids recommended inside THIS conversation's product cards. */
+  const chatProductIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const m of chatMessages) {
+      if (m.payload?.type === 'product_trio') {
+        for (const p of m.payload.trio?.products ?? []) {
+          const raw = p as { id?: string; product_id?: string }
+          const id = raw.product_id ?? raw.id
+          if (id) ids.add(String(id))
+        }
+      }
+    }
+    return ids
+  }, [chatMessages])
+
+  const getCheckoutCart = useCallback(
+    () =>
+      checkoutScopeRef.current === 'chat'
+        ? cartItems.filter((i) => chatProductIds.has(i.id))
+        : cartItems,
+    [cartItems, chatProductIds]
+  )
+
   const persistSession = useCallback(
     async (patch: Partial<SessionRecord> & { messages?: ChatMessage[] }) => {
       if (!sessionId) return
@@ -154,6 +213,11 @@ function AnuChatInner() {
     setStatusLines([])
     setSuggestedChips([])
     setInput('')
+    // Checkout scope belongs to a single conversation
+    checkoutScopeRef.current = 'all'
+    scopeChosen.current = false
+    pendingCheckout.current = null
+    scopeChipLabels.current = null
   }, [])
 
   const applySession = useCallback(
@@ -268,6 +332,41 @@ function AnuChatInner() {
     async (text: string) => {
       if (!text.trim() || isStreaming) return
 
+      // ── Chat-scoped checkout: the customer answered the chooser ──
+      const scopeLabels = scopeChipLabels.current
+      if (scopeLabels && (text === scopeLabels.chat || text === scopeLabels.all)) {
+        checkoutScopeRef.current = text === scopeLabels.chat ? 'chat' : 'all'
+        scopeChosen.current = true
+        scopeChipLabels.current = null
+        const original = pendingCheckout.current
+        pendingCheckout.current = null
+        setSuggestedChips([])
+        if (original) sendMessageRef.current(original)
+        return
+      }
+
+      // ── Chat-scoped checkout: intercept a checkout request when the cart
+      // mixes this chat's items with items added in earlier chats ──
+      if (!scopeChosen.current && isCheckoutIntentText(text)) {
+        const chatCount = cartItems.filter((i) => chatProductIds.has(i.id)).length
+        const otherCount = cartItems.length - chatCount
+        if (chatCount > 0 && otherCount > 0) {
+          const ask = buildScopeAsk(uiLang, chatCount, cartItems.length, otherCount)
+          pendingCheckout.current = text
+          scopeChipLabels.current = { chat: ask.chipChat, all: ask.chipAll }
+          setChatMessages((prev) => {
+            const next: ChatMessage[] = [
+              ...prev,
+              { role: 'assistant', content: ask.prompt },
+            ]
+            void persistSession({ messages: next })
+            return next
+          })
+          setSuggestedChips([ask.chipChat, ask.chipAll])
+          return
+        }
+      }
+
       // Sending is a user gesture — keep the speech engine unlocked so the
       // reply can be read aloud when the speaker is on.
       if (!voiceMuted) primeVoice()
@@ -325,7 +424,8 @@ function AnuChatInner() {
             messages: apiMessages,
             uiLang,
             chatLang: detected,
-            cartItems: cartItems.map((i) => ({
+            // Scoped to this chat's items when the customer chose so at checkout
+            cartItems: getCheckoutCart().map((i) => ({
               id: i.id,
               name: i.name,
               price: i.price,
@@ -544,6 +644,8 @@ function AnuChatInner() {
       isStreaming,
       uiLang,
       cartItems,
+      chatProductIds,
+      getCheckoutCart,
       savedProfiles,
       messages.errors,
       journeyStep,
@@ -553,6 +655,10 @@ function AnuChatInner() {
       primeVoice,
     ]
   )
+
+  useEffect(() => {
+    sendMessageRef.current = (text: string) => void sendMessage(text)
+  }, [sendMessage])
 
   const handleCheckoutSuccess = useCallback(
     (ctx: CheckoutSuccessPayload) => {
@@ -600,6 +706,9 @@ function AnuChatInner() {
       })
       setJourneyStep(3)
       setSuggestedChips(getAfterCheckoutChips(uiLang))
+      // A fresh checkout later starts with a fresh scope choice
+      checkoutScopeRef.current = 'all'
+      scopeChosen.current = false
     },
     [uiLang, persistSession, clearCheckedOutCart]
   )
@@ -612,7 +721,7 @@ function AnuChatInner() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cart: cartItems,
+            cart: getCheckoutCart(),
             recipient: details.recipient,
             senderName: details.senderName,
             senderEmail: details.senderEmail,
@@ -639,17 +748,17 @@ function AnuChatInner() {
 
       return data
     },
-    [cartItems]
+    [getCheckoutCart]
   )
 
   const handlePlanBoardConfirm = useCallback(
     async (data: CheckoutDetailsInput) => {
-      if (cartItems.length === 0 || confirmingOrder) return
+      if (getCheckoutCart().length === 0 || confirmingOrder) return
       setConfirmingOrder(true)
       try {
         const checkout = await runCheckoutWithRetry(data, 'chat-plan-confirm')
         if (checkout.orderResult) {
-          const snapshot = cartItems.map((i) => ({ ...i }))
+          const snapshot = getCheckoutCart().map((i) => ({ ...i }))
           handleCheckoutSuccess({
             orderResult: checkout.orderResult as OrderResult,
             items: snapshot.map((i) => ({
@@ -682,17 +791,17 @@ function AnuChatInner() {
         setConfirmingOrder(false)
       }
     },
-    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
+    [getCheckoutCart, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
   )
 
   const handleOrderPreviewConfirm = useCallback(
     async (details: CheckoutDetailsInput) => {
-      if (cartItems.length === 0 || confirmingOrder) return
+      if (getCheckoutCart().length === 0 || confirmingOrder) return
       setConfirmingOrder(true)
       try {
         const data = await runCheckoutWithRetry(details, 'chat-preview-confirm')
         if (data.orderResult) {
-          const snapshot = cartItems.map((i) => ({ ...i }))
+          const snapshot = getCheckoutCart().map((i) => ({ ...i }))
           handleCheckoutSuccess({
             orderResult: data.orderResult as OrderResult,
             items: snapshot.map((i) => ({
@@ -725,7 +834,7 @@ function AnuChatInner() {
         setConfirmingOrder(false)
       }
     },
-    [cartItems, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
+    [getCheckoutCart, confirmingOrder, handleCheckoutSuccess, persistSession, runCheckoutWithRetry]
   )
 
   const handleAddToCart = useCallback(

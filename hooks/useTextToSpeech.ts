@@ -106,40 +106,29 @@ function charScript(code: number): UiLang | null {
 }
 
 /**
- * Sinhala/Tamil chat replies routinely mix in English words ("මෙන්න black
- * dress එකක්"). One voice can't pronounce both scripts, so split the text
- * into same-script runs and speak each run with its own matching voice.
+ * Pick ONE language for the whole message from its dominant script. Mixed
+ * replies ("මෙන්න black dress එකක්") are read entirely by the dominant-script
+ * voice — native si/ta engines pronounce embedded English words acceptably,
+ * and a single voice sounds far smoother than switching mid-sentence.
  */
-function segmentByScript(text: string, fallback: UiLang): Array<{ text: string; lang: UiLang }> {
-  const segments: Array<{ text: string; lang: UiLang }> = []
-  let current = ''
-  let currentLang: UiLang | null = null
-
+function dominantLang(text: string, fallback: UiLang): UiLang {
+  let si = 0
+  let ta = 0
+  let en = 0
   for (const ch of text) {
     const script = charScript(ch.codePointAt(0) ?? 0)
-    if (script === null || script === currentLang) {
-      current += ch
-      continue
-    }
-    if (currentLang === null) {
-      currentLang = script
-      current += ch
-      continue
-    }
-    segments.push({ text: current.trim(), lang: currentLang })
-    current = ch
-    currentLang = script
+    if (script === 'si') si++
+    else if (script === 'ta') ta++
+    else if (script === 'en') en++
   }
-  if (current.trim()) segments.push({ text: current.trim(), lang: currentLang ?? fallback })
-
-  // Merge adjacent same-language runs so voice switches stay minimal
-  const merged: Array<{ text: string; lang: UiLang }> = []
-  for (const seg of segments) {
-    const last = merged[merged.length - 1]
-    if (last && last.lang === seg.lang) last.text += ` ${seg.text}`
-    else merged.push({ ...seg })
-  }
-  return merged.filter((s) => s.text.trim())
+  const script: UiLang = si >= ta ? 'si' : 'ta'
+  const scriptCount = Math.max(si, ta)
+  // Prefer the Sinhala/Tamil voice unless the text is overwhelmingly Latin —
+  // an English voice skips si/ta characters entirely, while si/ta voices can
+  // still read the embedded English words.
+  if (scriptCount > 0 && scriptCount * 3 >= en) return script
+  if (en > 0) return 'en'
+  return fallback
 }
 
 export function useTextToSpeech(uiLang: UiLang) {
@@ -202,7 +191,9 @@ export function useTextToSpeech(uiLang: UiLang) {
       window.speechSynthesis.cancel()
       // Chrome can get stuck in a paused state after cancel — resume defensively
       window.speechSynthesis.resume()
-      const langCode = SPEECH_LANG[langOverride ?? uiLang] || 'en-LK'
+      // One voice for the whole message, chosen by its dominant script
+      const lang = dominantLang(cleaned, langOverride ?? uiLang)
+      const langCode = SPEECH_LANG[lang] || 'en-LK'
       setSpeakingId(id)
 
       void (async () => {
@@ -212,29 +203,19 @@ export function useTextToSpeech(uiLang: UiLang) {
         await new Promise((r) => setTimeout(r, 60))
         if (speakSession.current !== session) return
 
-        // Build a queue of (chunk, voice) pairs: mixed-script messages get the
-        // right voice per run so Sinhala/Tamil and English are both pronounced.
-        const fallbackLang = langOverride ?? uiLang
-        const queue: Array<{ text: string; lang: string; voice: SpeechSynthesisVoice | null }> = []
-        for (const segment of segmentByScript(cleaned, fallbackLang)) {
-          const segLangCode = SPEECH_LANG[segment.lang] || langCode
-          const segVoice = pickVoice(segLangCode, voices)
-          for (const chunk of chunkText(segment.text)) {
-            queue.push({ text: chunk, lang: segLangCode, voice: segVoice })
-          }
-        }
+        const voice = pickVoice(langCode, voices)
+        const chunks = chunkText(cleaned)
         let index = 0
 
         const speakNext = () => {
           if (speakSession.current !== session) return
-          if (index >= queue.length) {
+          if (index >= chunks.length) {
             setSpeakingId(null)
             return
           }
-          const item = queue[index++]
-          const utterance = new SpeechSynthesisUtterance(item.text)
-          utterance.lang = item.lang
-          if (item.voice) utterance.voice = item.voice
+          const utterance = new SpeechSynthesisUtterance(chunks[index++])
+          utterance.lang = langCode
+          if (voice) utterance.voice = voice
           utterance.rate = 1
           utterance.pitch = 1
           utterance.onend = speakNext

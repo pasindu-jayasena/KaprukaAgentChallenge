@@ -27,8 +27,21 @@ export function ProgressInputBar({
   docked = false,
 }: Props) {
   const [focused, setFocused] = useState(false)
-  const handleSpeech = useCallback((text: string) => onChange(text), [onChange])
-  const { listening, supported, toggle } = useSpeech(uiLang, handleSpeech)
+  // Append dictated text to what's already typed instead of overwriting it
+  const handleSpeech = useCallback(
+    (text: string) => onChange(value.trim() ? `${value.trim()} ${text}` : text),
+    [onChange, value]
+  )
+  const { listening, supported, toggle, error: speechError } = useSpeech(uiLang, handleSpeech)
+
+  const speechErrorHint =
+    speechError === 'not-allowed' || speechError === 'service-not-allowed'
+      ? 'Microphone permission is blocked — allow it in your browser settings.'
+      : speechError === 'no-speech'
+      ? "I didn't catch that — tap the mic and try again."
+      : speechError
+      ? 'Voice input hit a snag — please try again.'
+      : null
 
   const progress = Math.min(100, (journeyStep / 4) * 100)
 
@@ -62,14 +75,14 @@ export function ProgressInputBar({
                 type="button"
                 onClick={toggle}
                 aria-label="Voice input"
-                className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 sm:h-9 sm:w-9 ${
+                className={`flex h-10 w-10 items-center justify-center rounded-full transition-all duration-200 ${
                   listening
                     ? 'bg-kapruka-header text-white shadow-md'
                     : 'text-[var(--text-muted)] hover:bg-[var(--rail-hover)] hover:text-[var(--text-primary)]'
                 }`}
                 style={{ animation: listening ? 'agentPulse 1.4s ease-in-out infinite' : undefined }}
               >
-                <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={1.9} />
+                <Mic className="h-4 w-4" strokeWidth={1.9} />
               </button>
             )}
             <button
@@ -77,13 +90,18 @@ export function ProgressInputBar({
               onClick={submit}
               disabled={loading || !value.trim()}
               aria-label="Send"
-              className="input-send-btn flex h-8 w-8 items-center justify-center rounded-full border-none transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed sm:h-9 sm:w-9"
+              className="input-send-btn flex h-10 w-10 items-center justify-center rounded-full border-none transition-all duration-200 hover:scale-105 active:scale-95 disabled:cursor-not-allowed"
             >
-              <ArrowUp className="h-4 w-4 text-kapruka-header sm:h-[18px] sm:w-[18px]" strokeWidth={2.4} />
+              <ArrowUp className="h-[18px] w-[18px] text-kapruka-header" strokeWidth={2.4} />
             </button>
           </div>
         </div>
       </div>
+      {speechErrorHint && (
+        <p className="mt-1 px-2 text-xs font-medium text-red-600 dark:text-red-400" role="status">
+          {speechErrorHint}
+        </p>
+      )}
     </div>
   )
 }

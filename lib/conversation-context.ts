@@ -137,18 +137,38 @@ export function messagesForModel(
   })
 }
 
-/** Append shown-product names so follow-up questions can be answered without re-searching. */
+/**
+ * Append shown-product names AND ids so follow-up questions can be answered
+ * without re-searching, and so <ADD_TO_CART> tags can copy real product ids.
+ */
 export function enrichMessageForModel(message: {
   role: string
   content: string
-  payload?: { type?: string; trio?: { products?: Array<{ name: string; price: number; pick?: boolean }> } }
+  payload?: {
+    type?: string
+    trio?: {
+      products?: Array<{
+        id?: string
+        product_id?: string
+        name: string
+        price: number
+        pick?: boolean
+        image?: string | null
+        image_url?: string | null
+        url?: string | null
+      }>
+    }
+  }
 }): string {
   if (message.role !== 'assistant' || message.payload?.type !== 'product_trio') {
     return message.content
   }
   const products = (message.payload.trio?.products ?? [])
-    .slice(0, 6)
-    .map((p) => `${p.name} Rs.${p.price}${p.pick ? ' [Anu pick]' : ''}`)
+    .slice(0, 12)
+    .map((p) => {
+      const id = p.product_id ?? p.id
+      return `${p.name} Rs.${p.price}${id ? ` [id:${id}]` : ''}${p.pick ? ' [Anu pick]' : ''}`
+    })
     .join('; ')
   if (!products) return message.content
   const base = message.content.trim()

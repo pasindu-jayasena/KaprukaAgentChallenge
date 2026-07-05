@@ -98,6 +98,50 @@ function chunkText(text: string, max = 180): string[] {
   return chunks.filter(Boolean)
 }
 
+function charScript(code: number): UiLang | null {
+  if (code >= 0x0d80 && code <= 0x0dff) return 'si'
+  if (code >= 0x0b80 && code <= 0x0bff) return 'ta'
+  if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) return 'en'
+  return null // digits, punctuation, spaces — attach to the surrounding run
+}
+
+/**
+ * Sinhala/Tamil chat replies routinely mix in English words ("මෙන්න black
+ * dress එකක්"). One voice can't pronounce both scripts, so split the text
+ * into same-script runs and speak each run with its own matching voice.
+ */
+function segmentByScript(text: string, fallback: UiLang): Array<{ text: string; lang: UiLang }> {
+  const segments: Array<{ text: string; lang: UiLang }> = []
+  let current = ''
+  let currentLang: UiLang | null = null
+
+  for (const ch of text) {
+    const script = charScript(ch.codePointAt(0) ?? 0)
+    if (script === null || script === currentLang) {
+      current += ch
+      continue
+    }
+    if (currentLang === null) {
+      currentLang = script
+      current += ch
+      continue
+    }
+    segments.push({ text: current.trim(), lang: currentLang })
+    current = ch
+    currentLang = script
+  }
+  if (current.trim()) segments.push({ text: current.trim(), lang: currentLang ?? fallback })
+
+  // Merge adjacent same-language runs so voice switches stay minimal
+  const merged: Array<{ text: string; lang: UiLang }> = []
+  for (const seg of segments) {
+    const last = merged[merged.length - 1]
+    if (last && last.lang === seg.lang) last.text += ` ${seg.text}`
+    else merged.push({ ...seg })
+  }
+  return merged.filter((s) => s.text.trim())
+}
+
 export function useTextToSpeech(uiLang: UiLang) {
   const supported = useSyncExternalStore(
     subscribeTtsSupport,
@@ -167,19 +211,30 @@ export function useTextToSpeech(uiLang: UiLang) {
         // cancel() — give the engine a beat before speaking
         await new Promise((r) => setTimeout(r, 60))
         if (speakSession.current !== session) return
-        const voice = pickVoice(langCode, voices)
-        const chunks = chunkText(cleaned)
+
+        // Build a queue of (chunk, voice) pairs: mixed-script messages get the
+        // right voice per run so Sinhala/Tamil and English are both pronounced.
+        const fallbackLang = langOverride ?? uiLang
+        const queue: Array<{ text: string; lang: string; voice: SpeechSynthesisVoice | null }> = []
+        for (const segment of segmentByScript(cleaned, fallbackLang)) {
+          const segLangCode = SPEECH_LANG[segment.lang] || langCode
+          const segVoice = pickVoice(segLangCode, voices)
+          for (const chunk of chunkText(segment.text)) {
+            queue.push({ text: chunk, lang: segLangCode, voice: segVoice })
+          }
+        }
         let index = 0
 
         const speakNext = () => {
           if (speakSession.current !== session) return
-          if (index >= chunks.length) {
+          if (index >= queue.length) {
             setSpeakingId(null)
             return
           }
-          const utterance = new SpeechSynthesisUtterance(chunks[index++])
-          utterance.lang = langCode
-          if (voice) utterance.voice = voice
+          const item = queue[index++]
+          const utterance = new SpeechSynthesisUtterance(item.text)
+          utterance.lang = item.lang
+          if (item.voice) utterance.voice = item.voice
           utterance.rate = 1
           utterance.pitch = 1
           utterance.onend = speakNext

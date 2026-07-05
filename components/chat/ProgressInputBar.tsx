@@ -11,6 +11,9 @@ interface Props {
   onSubmit: (v: string) => void
   placeholder: string
   uiLang: UiLang
+  /** Mic recognition language — defaults to uiLang; the chat page passes the
+      language the customer is actually conversing in. */
+  speechLang?: UiLang
   journeyStep?: number
   loading?: boolean
   docked?: boolean
@@ -22,6 +25,7 @@ export function ProgressInputBar({
   onSubmit,
   placeholder,
   uiLang,
+  speechLang,
   journeyStep = 0,
   loading = false,
   docked = false,
@@ -32,7 +36,10 @@ export function ProgressInputBar({
     (text: string) => onChange(value.trim() ? `${value.trim()} ${text}` : text),
     [onChange, value]
   )
-  const { listening, supported, toggle, error: speechError } = useSpeech(uiLang, handleSpeech)
+  const { listening, supported, toggle, error: speechError } = useSpeech(
+    speechLang ?? uiLang,
+    handleSpeech
+  )
 
   const speechErrorHint =
     speechError === 'not-allowed' || speechError === 'service-not-allowed'

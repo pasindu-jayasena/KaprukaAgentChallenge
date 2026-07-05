@@ -1,15 +1,19 @@
-# Kapruka Anu — Gift Concierge
+# Kapruka Anu — AI Shopping Concierge
 
-AI shopping assistant for Kapruka with a branded homepage and **Anu** chat concierge.
+AI shopping assistant for Kapruka with a branded homepage and **Anu**, a warm Sri Lankan shopping companion who chats, searches the live Kapruka catalog, and drives checkout end-to-end.
+
+**Live demo:** https://kapruka-anu.vercel.app
 
 ## Features
 
 - **Homepage**: Kapruka-branded nav, hero, category circles
-- **Chat** (`/chat`): Product carousel, plan board, order confirm, payment slip, order tracking
-- **Languages**: UI in **English / සිංහල / தமிழ்**; chat mirrors user input (EN, SI, TA, Singlish, Tanglish)
-- **Cart**: Sidebar checkout with delivery preview
-- **Voice**: Browser-native speech recognition and text-to-speech
-- **AI**: Claude (primary) + optional Groq chat backup + Kapruka MCP catalog/orders
+- **Chat** (`/chat`): Claude-driven conversation, product carousels with a "show more" affordance, plan board, order confirm, payment slip, order tracking, and global multi-chat cart
+- **Real cart actions**: Anu can add a shown product to the cart directly from chat (`<ADD_TO_CART>`), never just claims it
+- **Languages**: UI in **English / සිංහල / தமிழ்**; chat mirrors user input (EN, SI, TA, Singlish, Tanglish) with dominant-script-aware text-to-speech
+- **Cart**: Global across all chats — sidebar checkout with live delivery preview
+- **Voice**: Browser-native speech recognition and text-to-speech, mic language follows the active conversation
+- **AI**: Claude (primary) + optional Groq chat backup + Kapruka MCP catalog/delivery/orders/tracking
+- **Security**: Zod-validated requests, per-route rate limiting (Upstash), server-side price verification against the Kapruka catalog before order creation
 
 ## Setup
 

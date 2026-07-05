@@ -200,7 +200,6 @@ function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText:
   // Gift message & special instructions collection step
   if (/\b(personal message|gift message|special instruction|note|card message|handwritten)\b/.test(ask)) {
     draft.askedGiftMessage = true
-    const lower = clean(text)
     // User skipped
     if (/^\s*(no|nope|nah|skip|epa|na|nahi|venda|none|no need|naa)\s*$/i.test(text.trim())) {
       return

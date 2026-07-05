@@ -163,6 +163,9 @@ export function useTextToSpeech(uiLang: UiLang) {
 
       void (async () => {
         const voices = await waitForVoices()
+        // Chrome can silently drop an utterance queued in the same tick as
+        // cancel() — give the engine a beat before speaking
+        await new Promise((r) => setTimeout(r, 60))
         if (speakSession.current !== session) return
         const voice = pickVoice(langCode, voices)
         const chunks = chunkText(cleaned)

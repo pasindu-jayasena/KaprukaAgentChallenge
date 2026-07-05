@@ -177,7 +177,13 @@ export function RecentSessionsSidebar({
                     <span className={`truncate text-sm font-bold ${isActive ? 'text-white' : 'text-[var(--text-primary)]'}`}>
                       {s.title || messages.sessions.newChat}
                     </span>
-                    <span className={`shrink-0 text-[10px] font-medium ${isActive ? 'text-white/60' : 'text-[var(--text-muted)]'}`}>
+                    <span
+                      className={`shrink-0 text-[10px] font-medium transition-opacity ${
+                        isActive
+                          ? 'text-white/60 opacity-0'
+                          : 'text-[var(--text-muted)] group-hover:opacity-0 group-focus-within:opacity-0'
+                      }`}
+                    >
                       {formatRelativeTime(s.updatedAt)}
                     </span>
                   </div>
@@ -195,11 +201,15 @@ export function RecentSessionsSidebar({
                   )}
                 </button>
 
-                {/* Delete Button (Hover) */}
+                {/* Delete button — swaps into the timestamp's spot so it never overlaps other UI */}
                 <button
                   type="button"
                   onClick={(e) => deleteSession(e, s.id)}
-                  className={`absolute right-2 top-2.5 rounded-full p-1.5 opacity-0 transition-all hover:bg-red-500 hover:text-white focus:opacity-100 group-hover:opacity-100 ${isActive ? 'text-white/50' : 'text-[var(--text-muted)]'}`}
+                  className={`absolute right-2 top-1.5 rounded-full p-1.5 transition-all hover:bg-red-500 hover:text-white focus:opacity-100 ${
+                    isActive
+                      ? 'text-white/70 opacity-100'
+                      : 'text-[var(--text-muted)] opacity-0 group-hover:opacity-100'
+                  }`}
                   aria-label="Delete session"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

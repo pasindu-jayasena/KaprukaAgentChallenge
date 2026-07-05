@@ -6,6 +6,8 @@ import {
   normalizeCheckoutDetails,
   validateCheckoutDetails,
 } from '@/lib/checkout-validation'
+import { KaprukaMCPClient } from '@/lib/server/mcp-client'
+import { checkRateLimit, clientKeyFromRequest } from '@/lib/server/rate-limit'
 
 const schema = z.object({
   cart: z.array(
@@ -90,8 +92,60 @@ function sanitize(str: string): string {
     .trim()
 }
 
+function extractMcpPrice(raw: string): number | null {
+  try {
+    const trimmed = raw.trim()
+    const first = trimmed.indexOf('{')
+    const last = trimmed.lastIndexOf('}')
+    if (first < 0 || last <= first) return null
+    const data = JSON.parse(trimmed.slice(first, last + 1)) as {
+      price?: number | { amount?: number }
+      product?: { price?: number | { amount?: number } }
+    }
+    const price = data.price ?? data.product?.price
+    if (typeof price === 'number') return price
+    if (price && typeof price === 'object') return Number(price.amount ?? NaN)
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Don't trust client-sent prices: re-fetch each item from Kapruka MCP and use
+ * the catalog price. Fails open (keeps client price, logs) if a lookup fails,
+ * since the final authoritative total still comes from Kapruka's order response.
+ */
+async function repriceCart<T extends { id: string; price: number }>(cart: T[]): Promise<T[]> {
+  const mcp = new KaprukaMCPClient()
+  return Promise.all(
+    cart.map(async (item) => {
+      try {
+        const raw = await mcp.callTool('kapruka_get_product', { product_id: item.id })
+        const mcpPrice = extractMcpPrice(raw)
+        if (mcpPrice != null && Number.isFinite(mcpPrice) && mcpPrice > 0 && mcpPrice !== item.price) {
+          console.warn(
+            `[checkout] Price mismatch for ${item.id}: client sent ${item.price}, catalog says ${mcpPrice} — using catalog price`
+          )
+          return { ...item, price: mcpPrice }
+        }
+      } catch (err) {
+        console.error(`[checkout] Reprice lookup failed for ${item.id}:`, err)
+      }
+      return item
+    })
+  )
+}
+
 export async function POST(req: Request) {
   try {
+    const rate = await checkRateLimit('checkout', clientKeyFromRequest(req))
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "We're handling a lot of orders right now. Please wait a moment and try again.", retryable: true },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds ?? 30) } }
+      )
+    }
     const raw = await req.json()
     const parsed = schema.safeParse(raw)
     if (!parsed.success) {
@@ -128,8 +182,11 @@ export async function POST(req: Request) {
       date: normalizedDetails.recipient.date,
     }
 
+    // Verify prices against the Kapruka catalog before creating the order
+    const verifiedCart = await repriceCart(body.cart)
+
     const orderResult = await createKaprukaOrder({
-      cart: body.cart.map((i) => ({
+      cart: verifiedCart.map((i) => ({
         id: i.id,
         name: sanitize(i.name),
         price: i.price,
@@ -147,16 +204,16 @@ export async function POST(req: Request) {
         : undefined,
     })
 
-    const cartSubtotal = body.cart.reduce((s, i) => s + i.price * i.quantity, 0)
+    const cartSubtotal = verifiedCart.reduce((s, i) => s + i.price * i.quantity, 0)
     const pricing = resolveReceiptTotals({
       orderResult,
       subtotal: cartSubtotal,
-      items: body.cart.map((i) => ({ price: i.price, quantity: i.quantity })),
+      items: verifiedCart.map((i) => ({ price: i.price, quantity: i.quantity })),
     })
 
     return NextResponse.json({
       orderResult,
-      items: body.cart.map((i) => ({
+      items: verifiedCart.map((i) => ({
         name: i.name,
         price: i.price,
         quantity: i.quantity,

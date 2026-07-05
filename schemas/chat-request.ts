@@ -6,7 +6,7 @@ export const chatRequestSchema = z.object({
       role: z.enum(['user', 'assistant']),
       content: z.string().max(50000), // Max 50k chars per message to allow structured data
     })
-  ).max(50),
+  ).max(80),
   uiLang: z.enum(['en', 'si', 'ta']).default('en'),
   chatLang: z
     .enum(['en', 'si', 'ta', 'singlish', 'tanglish'])

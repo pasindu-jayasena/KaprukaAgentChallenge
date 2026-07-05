@@ -141,9 +141,19 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
+/** A model-requested cart mutation, executed client-side after validation. */
+export interface CartAction {
+  id: string
+  name: string
+  price: number
+  image?: string | null
+  url?: string | null
+  quantity: number
+}
+
 export type ChatPayload =
-  | { type: 'chat'; text: string; chips?: string[] }
-  | { type: 'product_trio'; trio: ProductTrio; rawText?: string; chips?: string[] }
+  | { type: 'chat'; text: string; chips?: string[]; cartAction?: CartAction }
+  | { type: 'product_trio'; trio: ProductTrio; rawText?: string; chips?: string[]; cartAction?: CartAction }
   | { type: 'plan_board'; plan: PlanBoard; rawText?: string; chips?: string[] }
   | { type: 'order_tracking'; tracking: OrderTracking; rawText?: string; chips?: string[] }
   | {

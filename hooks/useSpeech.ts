@@ -47,6 +47,7 @@ function subscribeSpeechSupport(onChange: () => void) {
 
 export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
   const [listening, setListening] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const supported = useSyncExternalStore(
     subscribeSpeechSupport,
     detectSpeechSupport,
@@ -54,6 +55,15 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
   )
 
   const recRef = useRef<SpeechRecognition | null>(null)
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flashError = useCallback((code: string) => {
+    // Surface a short-lived, user-meaningful hint instead of failing silently
+    if (code === 'aborted' || code === 'canceled') return
+    setError(code)
+    if (errorTimer.current) clearTimeout(errorTimer.current)
+    errorTimer.current = setTimeout(() => setError(null), 4000)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -64,9 +74,15 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
     rec.continuous = false
     rec.interimResults = true
     rec.lang = BROWSER_LANG[uiLang] || 'en-LK'
-    rec.onstart = () => setListening(true)
+    rec.onstart = () => {
+      setError(null)
+      setListening(true)
+    }
     rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
+    rec.onerror = (e) => {
+      setListening(false)
+      flashError(e.error)
+    }
     rec.onresult = (e) => {
       const finalText = Array.from(e.results)
         .filter((r) => r.isFinal)
@@ -79,7 +95,7 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
 
     recRef.current = rec
     return () => rec.abort()
-  }, [uiLang, onResult])
+  }, [uiLang, onResult, flashError])
 
   const toggle = useCallback(() => {
     const rec = recRef.current
@@ -98,5 +114,5 @@ export function useSpeech(uiLang: UiLang, onResult: (text: string) => void) {
     }
   }, [listening, uiLang])
 
-  return { listening, supported, toggle }
+  return { listening, supported, toggle, error }
 }

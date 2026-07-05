@@ -292,21 +292,39 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
                               {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5 opacity-40" />}
                             </button>
                             
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-kapruka-header/5 text-2xl overflow-hidden relative">
-                              {/* Future image support can go here. For now, emoji fallback */}
-                              🎁
+                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-kapruka-header/5 dark:bg-white/5 text-2xl overflow-hidden relative">
+                              {item.image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="h-full w-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none'
+                                    e.currentTarget.parentElement?.classList.add('cart-thumb-fallback')
+                                  }}
+                                />
+                              ) : (
+                                <span aria-hidden>🎁</span>
+                              )}
                             </div>
 
                             <div className="min-w-0 flex-1 flex flex-col justify-between">
                               <div>
                                 <p className="truncate text-sm font-bold text-[var(--text-primary)]">{item.name}</p>
-                                <p className="text-sm font-semibold text-kapruka-header mt-0.5">
+                                <p className="text-sm font-semibold text-kapruka-header dark:text-white mt-0.5">
                                   Rs. {item.price.toLocaleString()}
                                 </p>
                               </div>
                               <div className="mt-2 flex items-center justify-between">
                                 <div className="flex items-center gap-2 bg-[var(--bg-page)] rounded-md border border-[var(--border-light)] p-0.5">
-                                  <button type="button" onClick={() => updateQuantity(item.id, item.quantity - 1)} className="flex h-6 w-6 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 transition">
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease quantity"
+                                    disabled={item.quantity <= 1}
+                                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                    className="flex h-6 w-6 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/10 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
                                     <Minus className="h-3 w-3" />
                                   </button>
                                   <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
@@ -388,7 +406,7 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
               <div className="border-t border-[var(--border-light)] bg-[var(--bg-surface)] p-5 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
                 <div className="mb-4 flex justify-between text-sm items-end">
                   <span className="font-bold text-[var(--text-secondary)]">Subtotal ({checkoutItems.length} items)</span>
-                  <span className="text-xl font-black text-kapruka-header">Rs. {selectedTotal().toLocaleString()}</span>
+                  <span className="text-xl font-black text-kapruka-header dark:text-white">Rs. {selectedTotal().toLocaleString()}</span>
                 </div>
                 <button
                   type="button"

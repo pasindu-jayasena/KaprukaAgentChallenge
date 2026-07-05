@@ -109,10 +109,11 @@ function exactMatchFastPath(text: string): ExactMatch | null {
     query = 'teddy bear gift'
   } else if (/\b(grocer(?:y|ies)|rice|milk|dhal|dal|daily essentials?)\b/.test(t)) {
     category = 'groceries'
-    query = 'rice milk groceries daily essentials'
+    // Short queries match far better on the MCP keyword search
+    query = 'groceries'
   } else if (/\b(phone charger|charger|cable|electronics?|power bank|adapter|headset|earbuds)\b/.test(t)) {
     category = 'electronics'
-    query = 'phone charger cable power bank adapter electronics'
+    query = 'phone charger'
   }
 
   if (!category) return null

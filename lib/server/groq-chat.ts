@@ -19,7 +19,7 @@ function groqToolDefs() {
       function: {
         name: 'kapruka_search_products',
         description:
-          'Search Kapruka catalog ONLY when the customer wants to browse or buy. Skip for advice, emotional support, or comparing items already shown.',
+          'Search Kapruka catalog ONLY when the customer wants to browse or buy. Skip for advice, emotional support, or comparing items already shown. Use short concrete product nouns for q ("shoes", "sandals") — never umbrella words like "footwear"; retry with synonyms before saying something is unavailable.',
         parameters: {
           type: 'object',
           properties: { q: { type: 'string' }, category: { type: 'string' }, max_price: { type: 'number' }, limit: { type: 'number' } },

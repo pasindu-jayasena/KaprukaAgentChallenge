@@ -3,46 +3,32 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Gift, HeartHandshake, ShoppingBasket, PlugZap, Truck, X } from 'lucide-react'
+import { useLanguage } from '@/providers/LanguageProvider'
 
 interface Props {
   onPick?: (prompt: string) => void
   disabled?: boolean
 }
 
-const STARTERS = [
-  {
-    icon: HeartHandshake,
-    label: 'Sensitive situation',
-    description: 'Apology, breakup, argument, or a careful sorry gift.',
-    prompt: 'I need help with a sensitive situation',
-  },
-  {
-    icon: ShoppingBasket,
-    label: 'Shop for myself',
-    description: 'Groceries, electronics, fashion, home, or daily essentials.',
-    prompt: 'I want to shop for myself',
-  },
-  {
-    icon: Gift,
-    label: 'Plan a birthday',
-    description: 'Cake, gift, card, or a full birthday surprise.',
-    prompt: 'I want to plan a birthday',
-  },
-  {
-    icon: PlugZap,
-    label: 'Find an item',
-    description: 'Tell me the type, budget, brand, or use case.',
-    prompt: 'I need help finding an item',
-  },
-  {
-    icon: Truck,
-    label: 'Track order',
-    description: 'Check delivery status with an order number.',
-    prompt: 'Track my order',
-  },
-]
+const STARTER_ICONS = {
+  sensitive: HeartHandshake,
+  self: ShoppingBasket,
+  birthday: Gift,
+  find: PlugZap,
+  track: Truck,
+} as const
 
 export function WelcomeGuide({ onPick, disabled = false }: Props) {
+  const { messages } = useLanguage()
+  const w = messages.welcome
+  const starters = (Object.keys(STARTER_ICONS) as Array<keyof typeof STARTER_ICONS>).map(
+    (key) => ({
+      icon: STARTER_ICONS[key],
+      label: w.starters[key].label,
+      description: w.starters[key].desc,
+      prompt: w.starters[key].prompt,
+    })
+  )
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -80,22 +66,22 @@ export function WelcomeGuide({ onPick, disabled = false }: Props) {
               type="button"
               onClick={dismiss}
               className="absolute right-3 top-3 rounded-full p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--rail-hover)] hover:text-[var(--text-primary)]"
-              aria-label="Dismiss starters"
+              aria-label={w.dismiss}
             >
               <X className="h-4 w-4" />
             </button>
 
             <div className="pr-9">
               <h3 className="font-display text-base font-bold text-[var(--text-primary)]">
-                What do you need today?
+                {w.heading}
               </h3>
               <p className="mt-1 text-sm leading-snug text-[var(--text-secondary)]">
-                Pick a starting point. I will ask the right next question.
+                {w.subtitle}
               </p>
             </div>
 
             <div className="mt-4 grid gap-2">
-              {STARTERS.map((starter) => {
+              {starters.map((starter) => {
                 const Icon = starter.icon
                 return (
                   <button

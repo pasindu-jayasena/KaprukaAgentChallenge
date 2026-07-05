@@ -16,11 +16,18 @@ interface VoiceOutputContextValue {
   muted: boolean
   speakingId: string | null
   toggleMuted: () => void
-  read: (id: string, text: string) => void
+  read: (id: string, text: string, lang?: UiLang) => void
   stop: () => void
+  prime: () => void
 }
 
 const VoiceOutputContext = createContext<VoiceOutputContextValue | null>(null)
+
+const UNMUTE_CONFIRMATION: Record<UiLang, string> = {
+  en: 'Voice on! I will read my replies out loud.',
+  si: 'හරි, මම දැන් උත්තර කියවන්නම්!',
+  ta: 'சரி, இனி என் பதில்களை வாசிக்கிறேன்!',
+}
 
 export function VoiceOutputProvider({
   uiLang,
@@ -30,27 +37,34 @@ export function VoiceOutputProvider({
   children: ReactNode
 }) {
   const [muted, setMuted] = useState(true)
-  const { supported, speakingId, speak, stop } = useTextToSpeech(uiLang)
+  const { supported, speakingId, speak, stop, prime } = useTextToSpeech(uiLang)
 
   const toggleMuted = useCallback(() => {
     setMuted((current) => {
       const next = !current
-      if (next) stop()
+      if (next) {
+        stop()
+      } else {
+        // Unmuting happens inside the header tap — that user gesture unlocks
+        // audio on mobile, and the spoken confirmation proves sound works.
+        prime()
+        speak(`voice-on-${Date.now()}`, UNMUTE_CONFIRMATION[uiLang] ?? UNMUTE_CONFIRMATION.en, uiLang)
+      }
       return next
     })
-  }, [stop])
+  }, [stop, prime, speak, uiLang])
 
   const read = useCallback(
-    (id: string, text: string) => {
+    (id: string, text: string, lang?: UiLang) => {
       if (muted) return
-      speak(id, text)
+      speak(id, text, lang)
     },
     [muted, speak]
   )
 
   const value = useMemo(
-    () => ({ supported, muted, speakingId, toggleMuted, read, stop }),
-    [muted, read, speakingId, stop, supported, toggleMuted]
+    () => ({ supported, muted, speakingId, toggleMuted, read, stop, prime }),
+    [muted, read, speakingId, stop, supported, toggleMuted, prime]
   )
 
   return <VoiceOutputContext.Provider value={value}>{children}</VoiceOutputContext.Provider>
@@ -66,6 +80,7 @@ export function useVoiceOutput() {
       toggleMuted: () => {},
       read: () => {},
       stop: () => {},
+      prime: () => {},
     }
   }
   return value

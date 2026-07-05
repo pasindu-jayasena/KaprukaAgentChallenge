@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { ExternalLink, Sparkles } from 'lucide-react'
 import { useLanguage } from '@/providers/LanguageProvider'
+import { formatCurrency } from '@/lib/i18n/format'
 import type { Product } from '@/types'
 
 interface Props {
@@ -11,7 +13,9 @@ interface Props {
 }
 
 export function ProductDetailCard({ product, onChoose, onBack }: Props) {
-  const { messages } = useLanguage()
+  const { messages, uiLang } = useLanguage()
+  const [imageBroken, setImageBroken] = useState(false)
+  const outOfStock = product.in_stock === false
   const kaprukaUrl =
     product.url ??
     (product.id ? `https://www.kapruka.com/srilanka/${product.id}` : 'https://www.kapruka.com')
@@ -19,11 +23,16 @@ export function ProductDetailCard({ product, onChoose, onBack }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--border-light)] bg-[var(--bg-surface)] shadow-md">
       <div className="relative h-48 w-full overflow-hidden bg-[var(--bg-page)]">
-        {product.image ? (
+        {product.image && !imageBroken ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-full w-full object-cover"
+            onError={() => setImageBroken(true)}
+          />
         ) : (
-          <span className="flex h-full items-center justify-center text-5xl">🎁</span>
+          <span className="flex h-full items-center justify-center text-5xl" aria-hidden>🎁</span>
         )}
       </div>
 
@@ -34,9 +43,14 @@ export function ProductDetailCard({ product, onChoose, onBack }: Props) {
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xl font-extrabold text-[#401F60] dark:text-[#FCE22A]">
-            LKR {product.price?.toLocaleString()}
+            {formatCurrency(product.price ?? 0, uiLang)}
           </span>
-          {product.in_stock !== false && (
+          {outOfStock ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-700 dark:text-red-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              {messages.chat.outOfStock}
+            </span>
+          ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               {messages.chat.inStock}
@@ -79,9 +93,10 @@ export function ProductDetailCard({ product, onChoose, onBack }: Props) {
           <button
             type="button"
             onClick={onChoose}
-            className="flex-1 rounded-full bg-[#FCE22A] px-4 py-3 text-sm font-bold text-[#401F60] shadow-sm transition hover:bg-[#FDEB6B]"
+            disabled={outOfStock}
+            className="flex-1 rounded-full bg-[#FCE22A] px-4 py-3 text-sm font-bold text-[#401F60] shadow-sm transition hover:bg-[#FDEB6B] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {messages.chat.chooseThis}
+            {outOfStock ? messages.chat.outOfStock : messages.chat.chooseThis}
           </button>
           <button
             type="button"

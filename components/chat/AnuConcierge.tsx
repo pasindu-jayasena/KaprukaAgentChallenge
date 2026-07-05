@@ -38,7 +38,9 @@ import type {
   StatusEvent,
   SessionRecord,
   CartItem,
+  CartAction,
   ChatLang,
+  UiLang,
   CheckoutDetailsInput,
 } from '@/types'
 import { formatCheckoutUserDisplay, enrichMessageForModel } from '@/lib/conversation-context'
@@ -49,6 +51,16 @@ function getGreeting(uiLang: string): string {
   if (uiLang === 'si') return ANU_GREETINGS.si
   if (uiLang === 'ta') return ANU_GREETINGS.ta
   return ANU_GREETINGS.en
+}
+
+/** Pick the TTS voice from the message's actual script, not the UI language. */
+function detectSpeechLang(text: string): UiLang {
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0
+    if (code >= 0x0d80 && code <= 0x0dff) return 'si'
+    if (code >= 0x0b80 && code <= 0x0bff) return 'ta'
+  }
+  return 'en'
 }
 
 function isCheckoutCollectionText(text: string) {
@@ -83,7 +95,7 @@ function AnuChatInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { messages, uiLang } = useLanguage()
-  const { muted: voiceMuted, read: readAloud } = useVoiceOutput()
+  const { muted: voiceMuted, read: readAloud, prime: primeVoice } = useVoiceOutput()
   const cartItems = useCartStore((s) => s.items)
   const removeItems = useCartStore((s) => s.removeItems)
   const savedProfiles = useRecipientStore((s) => s.profiles)
@@ -109,6 +121,7 @@ function AnuChatInner() {
   const pendingSession = useRef<string | null>(null)
   const lastLocalChatLang = useRef<Exclude<ChatLang, 'en'> | null>(null)
   const lastSpokenMessage = useRef<string | null>(null)
+  const lastFailedText = useRef<string | null>(null)
 
   const persistSession = useCallback(
     async (patch: Partial<SessionRecord> & { messages?: ChatMessage[] }) => {
@@ -242,16 +255,32 @@ function AnuChatInner() {
     const lastIndex = chatMessages.length - 1
     const last = chatMessages[lastIndex]
     if (last.role !== 'assistant' || last.isStreaming || !last.content.trim()) return
+    // Review/receipt cards speak for themselves visually — don't read them out
+    const payloadType = last.payload?.type
+    if (payloadType === 'checkout' || payloadType === 'order_preview') return
 
     const id = `assistant-${lastIndex}-${last.content.slice(0, 24)}`
     if (lastSpokenMessage.current === id) return
     lastSpokenMessage.current = id
-    readAloud(id, last.content)
+
+    let spoken = last.content
+    if (last.payload?.type === 'product_trio') {
+      const trio = last.payload.trio as ProductTrio | undefined
+      const top = trio?.products?.find((p) => p.pick) ?? trio?.products?.[0]
+      if (top?.name) {
+        spoken += `. Top pick: ${top.name}, ${Math.round(top.price ?? 0).toLocaleString()} rupees.`
+      }
+    }
+    readAloud(id, spoken, detectSpeechLang(spoken))
   }, [chatMessages, isStreaming, readAloud, voiceMuted])
 
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isStreaming) return
+
+      // Sending is a user gesture — keep the speech engine unlocked so the
+      // reply can be read aloud when the speaker is on.
+      if (!voiceMuted) primeVoice()
 
       const detectedRaw = detectChatLanguage(text)
       const isShortReply = text.trim().split(/\s+/).length <= 5
@@ -278,15 +307,23 @@ function AnuChatInner() {
         { role: 'assistant', content: '', isStreaming: true },
       ])
 
-      try {
+      // Only send the recent window to the API — the server model caps its own
+      // context anyway, and the request schema rejects overly long histories.
+      const apiMessages = history.slice(-40).map((m) => ({
+        role: m.role,
+        content: enrichMessageForModel(m),
+      }))
+
+      const attempt = async (): Promise<{
+        payload: ChatPayload | null
+        displayText: string
+      }> => {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(55000),
           body: JSON.stringify({
-            messages: history.map((m) => ({
-              role: m.role,
-              content: enrichMessageForModel(m),
-            })),
+            messages: apiMessages,
             uiLang,
             chatLang: detected,
             cartItems: cartItems.map((i) => ({
@@ -301,14 +338,17 @@ function AnuChatInner() {
           }),
         })
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          const err = new Error(`HTTP ${res.status}`) as Error & { status?: number }
+          err.status = res.status
+          throw err
+        }
 
         const reader = res.body!.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
         let payload: ChatPayload | null = null
         let displayText = ''
-        let nextJourney = journeyStep
 
         while (true) {
           const { done, value } = await reader.read()
@@ -380,17 +420,63 @@ function AnuChatInner() {
           }
         }
 
+        return { payload, displayText }
+      }
+
+      try {
+        let result: { payload: ChatPayload | null; displayText: string }
+        try {
+          result = await attempt()
+        } catch (firstErr) {
+          const status = (firstErr as { status?: number }).status
+          // 4xx (bad request) won't get better on retry; transient failures might
+          if (status && status >= 400 && status < 500 && status !== 429) throw firstErr
+          setStatusLines([])
+          await new Promise((r) => setTimeout(r, 1200))
+          result = await attempt()
+        }
+        const { payload, displayText } = result
+        lastFailedText.current = null
+        let nextJourney = journeyStep
+
+        // Execute a validated model-requested add-to-cart. This only runs in
+        // the live-stream path, so restored sessions never re-add items.
+        let appliedCartAction: CartAction | null = null
+        if (
+          payload &&
+          (payload.type === 'chat' || payload.type === 'product_trio') &&
+          payload.cartAction
+        ) {
+          const action = payload.cartAction
+          useCartStore.getState().addItem({
+            id: action.id,
+            name: action.name,
+            price: action.price,
+            image: action.image ?? null,
+            url: action.url ?? null,
+            quantity: action.quantity,
+          })
+          appliedCartAction = action
+        }
+
         if (payload?.type === 'product_trio') nextJourney = 1
         if (payload?.type === 'plan_board' || payload?.type === 'order_preview') nextJourney = 2
         if (payload?.type === 'checkout') nextJourney = 3
         if (payload?.type === 'order_tracking') nextJourney = 4
         setJourneyStep(nextJourney)
 
+        const finalDisplayText =
+          appliedCartAction && !displayText.trim()
+            ? addToCartFollowUp(appliedCartAction.name, uiLang)
+            : displayText
+
         const chipSource =
           payload && 'chips' in payload ? payload.chips : undefined
-        const inferred = inferChipsFromAssistantText(displayText, uiLang)
-        const checkoutCollection = payload?.type === 'chat' && isCheckoutCollectionText(displayText)
-        if (payload?.type === 'checkout') {
+        const inferred = inferChipsFromAssistantText(finalDisplayText, uiLang)
+        const checkoutCollection = payload?.type === 'chat' && isCheckoutCollectionText(finalDisplayText)
+        if (appliedCartAction) {
+          setSuggestedChips(getAfterAddToCartChips(uiLang))
+        } else if (payload?.type === 'checkout') {
           setSuggestedChips(getAfterCheckoutChips(uiLang))
         } else if (payload?.type === 'order_preview') {
           setSuggestedChips(chipSource ?? [])
@@ -408,7 +494,7 @@ function AnuChatInner() {
           ...history,
           {
             role: 'assistant',
-            content: displayText,
+            content: finalDisplayText,
             payload: payload ?? undefined,
             isStreaming: false,
           },
@@ -427,16 +513,28 @@ function AnuChatInner() {
         } else {
           await persistSession({ messages: finalMessages, journeyStep: nextJourney })
         }
-      } catch {
+      } catch (err) {
+        const status = (err as { status?: number }).status
+        const isTimeout =
+          err instanceof DOMException &&
+          (err.name === 'TimeoutError' || err.name === 'AbortError')
+        const errorText =
+          status === 429
+            ? messages.errors.rateLimit
+            : isTimeout
+            ? messages.errors.timeout
+            : messages.errors.generic
+        lastFailedText.current = text
         setChatMessages((prev) => {
           const next = [...prev]
           next[next.length - 1] = {
             role: 'assistant',
-            content: messages.errors.generic,
+            content: errorText,
             isStreaming: false,
           }
           return next
         })
+        setSuggestedChips([messages.errors.tryAgain])
       } finally {
         setIsStreaming(false)
         setStatusLines([])
@@ -448,10 +546,12 @@ function AnuChatInner() {
       uiLang,
       cartItems,
       savedProfiles,
-      messages.errors.generic,
+      messages.errors,
       journeyStep,
       persistSession,
       clearCheckedOutCart,
+      voiceMuted,
+      primeVoice,
     ]
   )
 
@@ -645,6 +745,16 @@ function AnuChatInner() {
     [uiLang, persistSession]
   )
 
+  const handleShowMore = useCallback(() => {
+    const prompt =
+      uiLang === 'si'
+        ? 'මේ වගේ තව වෙනස් options ටිකක් පෙන්නන්න'
+        : uiLang === 'ta'
+        ? 'இது போன்ற வேறு options காட்டுங்கள்'
+        : 'Show me more different options like these'
+    void sendMessage(prompt)
+  }, [uiLang, sendMessage])
+
   const handleCheckoutCancel = useCallback(
     (messageIndex: number) => {
       setChatMessages((prev) => {
@@ -759,6 +869,7 @@ function AnuChatInner() {
                                 : msg.payload.trio?.context,
                           }}
                           onAddToCart={handleAddToCart}
+                          onShowMore={handleShowMore}
                         />
                       )}
                       {msg.payload?.type === 'plan_board' && (
@@ -821,7 +932,13 @@ function AnuChatInner() {
               <button
                 key={chip}
                 type="button"
-                onClick={() => sendMessage(chip)}
+                onClick={() =>
+                  sendMessage(
+                    chip === messages.errors.tryAgain && lastFailedText.current
+                      ? lastFailedText.current
+                      : chip
+                  )
+                }
                 className="glass-chip rounded-full px-3.5 py-2 text-sm font-medium text-[var(--text-primary)]"
               >
                 {chip}

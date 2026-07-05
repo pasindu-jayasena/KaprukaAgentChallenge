@@ -108,7 +108,7 @@ export function LockedCheckoutCard({
   if (items?.length) {
     detailRows.push({
       label: r.orderItems,
-      value: items.map((i) => `${i.name}${i.id ? `-${i.id}` : ''}`).join('\n'),
+      value: items.map((i) => `${i.name} × ${i.quantity}`).join('\n'),
     })
   }
   if (recipient) {
@@ -160,7 +160,7 @@ export function LockedCheckoutCard({
           <CheckCircle2 className="h-4 w-4 shrink-0 text-[#FCE22A]" />
           <div className="min-w-0">
             <h3 className="text-sm font-bold leading-tight">
-              {cancelled ? 'Order cancelled' : 'Order locked!'}
+              {cancelled ? r.orderCancelled : r.orderLocked}
             </h3>
             {text && (
               <p className={`text-xs leading-snug ${cancelled ? 'line-through text-white/60' : 'text-white/75'}`}>
@@ -178,11 +178,12 @@ export function LockedCheckoutCard({
               type="button"
               onClick={copyRef}
               className="shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
-              title="Copy Reference"
+              title={r.copyReference}
+              aria-label={r.copyReference}
             >
               <Copy className="h-3 w-3 text-white/70" />
             </button>
-            {copied && <span className="shrink-0 text-[10px] text-[#FCE22A]">Copied!</span>}
+            {copied && <span className="shrink-0 text-[10px] text-[#FCE22A]">{r.copied}</span>}
           </div>
         )}
       </div>
@@ -199,15 +200,15 @@ export function LockedCheckoutCard({
 
         <div className="space-y-0.5 text-xs">
           <div className="flex justify-between text-[var(--text-secondary)]">
-            <span>Subtotal</span>
+            <span>{r.subtotal}</span>
             <span>Rs. {pricing.subtotal.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-[var(--text-secondary)]">
-            <span>Delivery</span>
+            <span>{r.delivery}</span>
             <span>Rs. {pricing.deliveryFee.toLocaleString()}</span>
           </div>
           <div className="flex justify-between border-t border-[var(--border-light)] pt-1 text-xs font-bold text-[var(--text-primary)]">
-            <span>Total</span>
+            <span>{r.total}</span>
             <span>Rs. {pricing.total.toLocaleString()}</span>
           </div>
         </div>
@@ -215,7 +216,7 @@ export function LockedCheckoutCard({
         {orderResult.url && !cancelled && (
           <div className="text-center">
             <p className="mb-1.5 text-[10px] font-medium text-[var(--text-muted)]">
-              Expires in{' '}
+              {r.expiresIn}{' '}
               <span className="font-bold tabular-nums text-[#401F60] dark:text-[#FCE22A]">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </span>
@@ -226,7 +227,7 @@ export function LockedCheckoutCard({
               rel="noopener noreferrer"
               className={`flex w-full items-center justify-center gap-1.5 ${slipBtnPrimary} active:scale-[0.98]`}
             >
-              Pay on Kapruka.com
+              {r.payOnKapruka}
               <ExternalLink className="h-3 w-3" />
             </a>
             <p className="mt-2 text-[11px] leading-snug text-[var(--text-muted)]">
@@ -242,13 +243,13 @@ export function LockedCheckoutCard({
             className={`flex w-full items-center justify-center gap-1.5 ${slipBtnSecondary}`}
           >
             <RotateCcw className="h-3 w-3" />
-            Cancel & return to cart
+            {r.cancelReturnToCart}
           </button>
         ) : null}
 
         {cancelled && (
           <p className="text-center text-[10px] text-[var(--text-muted)]">
-            Items restored to your cart.
+            {r.itemsRestored}
           </p>
         )}
       </div>

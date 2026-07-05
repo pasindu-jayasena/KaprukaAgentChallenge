@@ -81,8 +81,15 @@ export function validateCheckoutDetails(details: CheckoutDetailsInput): string[]
   if (d.recipient.city.length < 2) {
     issues.push('Recipient city is required.')
   }
-  if (!d.recipient.date || Number.isNaN(new Date(d.recipient.date).getTime())) {
+  const deliveryDate = new Date(d.recipient.date)
+  if (!d.recipient.date || Number.isNaN(deliveryDate.getTime())) {
     issues.push('Delivery date is required.')
+  } else {
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    if (deliveryDate.getTime() < todayStart.getTime()) {
+      issues.push('Delivery date cannot be in the past.')
+    }
   }
 
   return issues

@@ -75,13 +75,50 @@ function isCheckoutIntentText(text: string) {
   return /\b(checkout|check\s?out|place (the |my )?order|buy now|proceed to pay|pay now)\b/i.test(text)
 }
 
-/** Copy + chips for the "this chat's items or the whole cart?" chooser. */
-function buildScopeAsk(uiLang: UiLang, chatCount: number, total: number, otherCount: number) {
+interface ScopeAsk {
+  prompt: string
+  /** null when this chat contributed no items — there is nothing to scope to */
+  chipChat: string | null
+  chipAll: string
+  chipCancel: string
+}
+
+/**
+ * Copy + chips for the checkout-scope chooser. Asked whenever the cart
+ * contains ANY item this chat didn't add — even if this chat added nothing
+ * at all — so Anu never silently checks out a different conversation's items.
+ */
+function buildScopeAsk(uiLang: UiLang, chatCount: number, total: number, otherCount: number): ScopeAsk {
+  if (chatCount === 0) {
+    if (uiLang === 'si') {
+      return {
+        prompt: `මේ chat එකෙන් මොකුත් add කරලා නෑනේ — ඔයාගේ cart එකේ කලින් chat එකකින් items ${otherCount}ක් තියෙනවා. ඒවා checkout කරන්නද, නැත්නම් මුලින්ම මෙතන මොකක් හරි add කරන්නද?`,
+        chipChat: null,
+        chipAll: `ඒ items ${otherCount} checkout කරන්න`,
+        chipCancel: `මුලින්ම මෙතන add කරන්න`,
+      }
+    }
+    if (uiLang === 'ta') {
+      return {
+        prompt: `இந்த chat-ல எதுவும் add பண்ணலை — உங்க cart-ல முந்தைய chat-ல இருந்து ${otherCount} items இருக்கு. அதை checkout செய்யட்டுமா, இல்ல முதலில் இங்க ஏதாவது add பண்ணணுமா?`,
+        chipChat: null,
+        chipAll: `அந்த ${otherCount} items checkout செய்`,
+        chipCancel: `முதலில் இங்க add பண்ணுவோம்`,
+      }
+    }
+    return {
+      prompt: `You haven't added anything in this chat yet — your cart already has ${otherCount} item${otherCount === 1 ? '' : 's'} from an earlier chat. Would you like to check those out, or add something here first?`,
+      chipChat: null,
+      chipAll: `Checkout those ${otherCount} item${otherCount === 1 ? '' : 's'}`,
+      chipCancel: `Add something here first`,
+    }
+  }
   if (uiLang === 'si') {
     return {
       prompt: `ඔයාගේ cart එකේ items ${total}ක් තියෙනවා — මේ chat එකෙන් ${chatCount}ක්, කලින් chats වලින් ${otherCount}ක්. මොනවද checkout කරන්නේ?`,
       chipChat: `මේ chat එකේ items විතරයි (${chatCount})`,
       chipAll: `Cart එකේ ඔක්කොම (${total})`,
+      chipCancel: `පස්සේ`,
     }
   }
   if (uiLang === 'ta') {
@@ -89,13 +126,21 @@ function buildScopeAsk(uiLang: UiLang, chatCount: number, total: number, otherCo
       prompt: `உங்கள் cart-ல ${total} items இருக்கு — இந்த chat-ல ${chatCount}, முந்தைய chats-ல ${otherCount}. எதை checkout செய்யட்டும்?`,
       chipChat: `இந்த chat items மட்டும் (${chatCount})`,
       chipAll: `Cart முழுவதும் (${total})`,
+      chipCancel: `பிறகு`,
     }
   }
   return {
     prompt: `Your cart has ${total} items — ${chatCount} from this chat and ${otherCount} added in earlier chats. Which would you like to check out?`,
     chipChat: `Only this chat's items (${chatCount})`,
     chipAll: `All cart items (${total})`,
+    chipCancel: `Not now`,
   }
+}
+
+function scopeCancelReply(uiLang: UiLang): string {
+  if (uiLang === 'si') return 'හරි! මොනවද ගන්න one, කියන්න - මම හොයලා දෙන්නම්.'
+  if (uiLang === 'ta') return 'சரி! எதை வாங்கணும்னு சொல்லுங்க, நான் தேடித் தருகிறேன்.'
+  return "No problem! Tell me what you'd like to shop for and I'll help you find it."
 }
 
 type CheckoutFailureResponse = {
@@ -160,7 +205,7 @@ function AnuChatInner() {
   const checkoutScopeRef = useRef<'all' | 'chat'>('all')
   const scopeChosen = useRef(false)
   const pendingCheckout = useRef<string | null>(null)
-  const scopeChipLabels = useRef<{ chat: string; all: string } | null>(null)
+  const scopeChipLabels = useRef<{ chat: string | null; all: string; cancel: string } | null>(null)
   const sendMessageRef = useRef<(text: string) => void>(() => {})
 
   /** Product ids recommended inside THIS conversation's product cards. */
@@ -334,26 +379,47 @@ function AnuChatInner() {
 
       // ── Chat-scoped checkout: the customer answered the chooser ──
       const scopeLabels = scopeChipLabels.current
-      if (scopeLabels && (text === scopeLabels.chat || text === scopeLabels.all)) {
-        checkoutScopeRef.current = text === scopeLabels.chat ? 'chat' : 'all'
-        scopeChosen.current = true
+      if (
+        scopeLabels &&
+        (text === scopeLabels.chat || text === scopeLabels.all || text === scopeLabels.cancel)
+      ) {
         scopeChipLabels.current = null
         const original = pendingCheckout.current
         pendingCheckout.current = null
+
+        if (text === scopeLabels.cancel) {
+          // Customer wants to add something here first — do NOT check out
+          // items this chat never added. Stay in shopping mode.
+          setChatMessages((prev) => {
+            const next: ChatMessage[] = [
+              ...prev,
+              { role: 'assistant', content: scopeCancelReply(uiLang) },
+            ]
+            void persistSession({ messages: next })
+            return next
+          })
+          setSuggestedChips([])
+          return
+        }
+
+        checkoutScopeRef.current = text === scopeLabels.chat ? 'chat' : 'all'
+        scopeChosen.current = true
         setSuggestedChips([])
         if (original) sendMessageRef.current(original)
         return
       }
 
-      // ── Chat-scoped checkout: intercept a checkout request when the cart
-      // mixes this chat's items with items added in earlier chats ──
+      // ── Chat-scoped checkout: intercept a checkout request whenever the
+      // cart contains ANY item this chat didn't add — including when this
+      // chat added nothing at all — so Anu never silently checks out a
+      // different conversation's items without asking first ──
       if (!scopeChosen.current && isCheckoutIntentText(text)) {
         const chatCount = cartItems.filter((i) => chatProductIds.has(i.id)).length
         const otherCount = cartItems.length - chatCount
-        if (chatCount > 0 && otherCount > 0) {
+        if (otherCount > 0) {
           const ask = buildScopeAsk(uiLang, chatCount, cartItems.length, otherCount)
           pendingCheckout.current = text
-          scopeChipLabels.current = { chat: ask.chipChat, all: ask.chipAll }
+          scopeChipLabels.current = { chat: ask.chipChat, all: ask.chipAll, cancel: ask.chipCancel }
           setChatMessages((prev) => {
             const next: ChatMessage[] = [
               ...prev,
@@ -362,7 +428,9 @@ function AnuChatInner() {
             void persistSession({ messages: next })
             return next
           })
-          setSuggestedChips([ask.chipChat, ask.chipAll])
+          setSuggestedChips(
+            [ask.chipChat, ask.chipAll, ask.chipCancel].filter((c): c is string => !!c)
+          )
           return
         }
       }
@@ -424,8 +492,16 @@ function AnuChatInner() {
             messages: apiMessages,
             uiLang,
             chatLang: detected,
-            // Scoped to this chat's items when the customer chose so at checkout
-            cartItems: getCheckoutCart().map((i) => ({
+            // The AI only ever sees items THIS chat added, by default — never
+            // a different conversation's leftovers — so it can never collect
+            // checkout details or a payment link for a product no one asked
+            // about here. Only after the customer resolves the scope chooser
+            // (see isCheckoutIntentText below) does the resolved cart — which
+            // may include other chats' items — get sent.
+            cartItems: (scopeChosen.current
+              ? getCheckoutCart()
+              : cartItems.filter((i) => chatProductIds.has(i.id))
+            ).map((i) => ({
               id: i.id,
               name: i.name,
               price: i.price,

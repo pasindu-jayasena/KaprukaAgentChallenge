@@ -36,7 +36,7 @@ export function getAfterCheckoutChips(uiLang: UiLang): string[] {
  * The LLM's system prompt now explicitly instructs it to ALWAYS generate
  * contextual chips, so this should rarely fire.
  */
-export function inferChipsFromAssistantText(text: string, uiLang: UiLang): string[] | null {
+export function inferChipsFromAssistantText(text: string): string[] | null {
   // Checkout-related
   if (/checkout|ready to (?:pay|order)|delivery details|confirm/i.test(text)) {
     return ['Checkout now', 'Add more items', 'Change details']
@@ -67,6 +67,6 @@ export function addToCartFollowUp(productName: string, uiLang: UiLang): string {
 }
 
 // Keep backward compatibility — deprecated, but some files may still import
-export function getOccasionChips(uiLang: UiLang): string[] {
+export function getOccasionChips(): string[] {
   return ['Birthday', 'Anniversary', 'Wedding', 'Thank you', 'Party']
 }

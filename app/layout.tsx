@@ -3,6 +3,7 @@ import Script from 'next/script'
 import { Source_Sans_3, Noto_Sans_Sinhala, Noto_Sans_Tamil } from 'next/font/google'
 import { LanguageProvider } from '@/providers/LanguageProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
+import { VoiceOutputProvider } from '@/hooks/useVoiceOutput'
 import { SplashScreen } from '@/components/loading/SplashScreen'
 import './globals.css'
 
@@ -50,8 +51,10 @@ export default function RootLayout({
       <body className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col antialiased">
         <ThemeProvider>
           <LanguageProvider>
-            <SplashScreen />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+            <VoiceOutputProvider>
+              <SplashScreen />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+            </VoiceOutputProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

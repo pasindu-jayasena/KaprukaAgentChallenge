@@ -32,10 +32,8 @@ Open [http://localhost:3000](http://localhost:3000)
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `CLAUDE_API_KEY` | Yes | Primary chat brain |
-| `CLAUDE_BASE_URL` | No (default: tokenlb) | Claude API base URL |
+| `CLAUDE_BASE_URL` | No | Claude API base URL |
 | `CLAUDE_MODEL` | No | Default: `claude-sonnet-4-6` |
-| `GROQ_API_KEY` | Optional | Backup chat only; voice uses browser APIs |
-| `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
 | `UPSTASH_REDIS_REST_URL` | **Production** | Persistent chat sessions |
 | `UPSTASH_REDIS_REST_TOKEN` | **Production** | Persistent chat sessions |
 
@@ -55,13 +53,12 @@ npm run start   # smoke-test on http://localhost:3000
 ```bash
 vercel
 vercel env add CLAUDE_API_KEY production
-vercel env add GROQ_API_KEY production
 vercel env add UPSTASH_REDIS_REST_URL production
 vercel env add UPSTASH_REDIS_REST_TOKEN production
 vercel --prod
 ```
 
-Ensure production env has **Claude** and **Upstash Redis** for sessions. Groq is optional for chat fallback only.
+Ensure production env has **Claude** and **Upstash Redis** for sessions.
 
 ## Project structure
 

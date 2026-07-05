@@ -60,7 +60,7 @@ export function LockedCheckoutCard({
   cancelled = false,
 }: Props) {
   const { messages } = useLanguage()
-  const restoreCart = useCartStore((s) => s.restoreCart)
+  const addItem = useCartStore((s) => s.addItem)
   const [secondsLeft, setSecondsLeft] = useState(3600)
   const [copied, setCopied] = useState(false)
 
@@ -99,7 +99,18 @@ export function LockedCheckoutCard({
           url: i.url ?? null,
         }))
 
-    restoreCart(restore)
+    // Merge the cancelled order's items back into the global cart instead of
+    // replacing it — the customer may have added other products since.
+    for (const item of restore) {
+      addItem({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        image: item.image ?? null,
+        url: item.url ?? null,
+        quantity: item.quantity,
+      })
+    }
     onCancel?.()
   }
 

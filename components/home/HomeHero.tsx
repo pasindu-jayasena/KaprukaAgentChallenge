@@ -73,9 +73,12 @@ export function HomeHero() {
           className="hero-panel min-w-0 overflow-hidden bg-[var(--bg-surface-elevated)] shadow-2xl ring-1 ring-[var(--border-light)]"
           style={{ borderRadius: '24px' }}
         >
-          <div className="mb-5 flex min-w-0 items-center justify-center gap-2 text-center sm:mb-6 sm:gap-2.5">
-            <MessageCircle className="h-5 w-5 shrink-0 text-[var(--text-primary)] sm:h-6 sm:w-6" />
-            <h2 className="min-w-0 text-balance font-display text-lg font-bold leading-tight text-[var(--text-primary)] sm:text-2xl">
+          <div className="mb-5 min-w-0 text-center sm:mb-6">
+            <h2 className="min-w-0 text-balance font-display text-lg font-bold leading-snug text-[var(--text-primary)] sm:text-2xl">
+              <MessageCircle
+                className="mr-2 inline-block h-5 w-5 shrink-0 align-[-0.2em] text-[var(--text-primary)] sm:h-6 sm:w-6"
+                aria-hidden
+              />
               {t}
             </h2>
           </div>

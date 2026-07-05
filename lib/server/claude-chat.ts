@@ -26,14 +26,18 @@ function claudeToolDefs(): ToolDef[] {
       function: {
         name: 'kapruka_search_products',
         description:
-          'Search Kapruka catalog ONLY when the customer wants to browse or buy products, including gifts, groceries, electronics, fashion, home items, and daily essentials. Do NOT use for advice questions, comparisons of already-shown items, or general chat.',
+          'Search Kapruka catalog ONLY when the customer wants to browse or buy products, including gifts, groceries, electronics, fashion, home items, and daily essentials. Do NOT use for advice questions, comparisons of already-shown items, or general chat. Keyword matcher: use short concrete product nouns ("shoes", "sandals", "black dress") — umbrella words like "footwear" match junk, and long multi-keyword queries return nothing. If results are poor, retry with synonyms and without max_price before concluding anything is unavailable.',
         parameters: {
           type: 'object',
           properties: {
-            q: { type: 'string', description: 'Search query' },
+            q: {
+              type: 'string',
+              description:
+                'Short concrete product keywords, 1-3 words (e.g. "sandals", "ladies shoes"). Never umbrella terms like "footwear".',
+            },
             category: { type: 'string', description: 'Category filter' },
             max_price: { type: 'number', description: 'Maximum price in LKR' },
-            limit: { type: 'number', description: 'Max results (default 5)' },
+            limit: { type: 'number', description: 'Max results (use 10-15 for browsing)' },
           },
           required: ['q'],
         },

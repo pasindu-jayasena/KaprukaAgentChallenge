@@ -34,6 +34,27 @@ interface CheckoutDraft {
   giftMessage?: string
   specialInstructions?: string
   askedGiftMessage?: boolean
+  askedSpecialInstructions?: boolean
+}
+
+// "No", "No, skip", "no thanks", "epa", "venda", "නෑ" … all mean skip.
+// Short replies that LEAD with a negative word are a skip; longer text that
+// merely starts with "No" ("No one loves you like I do") is a real message.
+const SKIP_LEAD_WORDS = new Set([
+  'no', 'nope', 'nah', 'skip', 'epa', 'na', 'naa', 'nahi', 'venda', 'none',
+  'එපා', 'නෑ', 'නැහැ', 'නැත', 'வேண்டாம்', 'இல்லை',
+])
+
+function isSkipReply(text: string) {
+  // Strip ALL punctuation ("No, skip" → "no skip") before tokenizing
+  const tokens = text
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!tokens.length) return true
+  return SKIP_LEAD_WORDS.has(tokens[0]) && tokens.length <= 3
 }
 
 function clean(text: string) {
@@ -81,7 +102,7 @@ export function inferConversationMode(messages: ChatTurn[], cart: CartItem[]): C
   if (isBudgetNegotiation) return 'shopping'
 
   const checkoutLanguage =
-    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|deliver to|delivery date|sender name|who is sending|checkout now|ready to pay)\b/.test(recent) ||
+    /\b(who should receive|receive this order|recipient name|phone number|delivery address|which city|deliver to|delivery date|sender name|who is sending|checkout now|ready to pay|personal message|special delivery instructions)\b/.test(recent) ||
     /\b(checkout karannada|checkout pannalama|order eka receive karanne|gift eka katada)\b/.test(recent)
 
   return cart.length > 0 && checkoutLanguage ? 'checkout_collecting' : 'shopping'
@@ -197,17 +218,22 @@ function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText:
     return
   }
 
-  // Gift message & special instructions collection step
-  if (/\b(personal message|gift message|special instruction|note|card message|handwritten)\b/.test(ask)) {
+  // Special delivery instructions collection step (own question, after the gift message)
+  if (/\b(special|delivery)\s+instructions?\b/.test(ask)) {
+    draft.askedSpecialInstructions = true
+    if (!isSkipReply(text)) draft.specialInstructions = text.trim()
+    return
+  }
+
+  // Personal/gift message collection step
+  if (/\b(personal message|gift message|card message|handwritten)\b/.test(ask)) {
     draft.askedGiftMessage = true
-    // User skipped
-    if (/^\s*(no|nope|nah|skip|epa|na|nahi|venda|none|no need|naa)\s*$/i.test(text.trim())) {
-      return
-    }
-    // Try to split: first part = gift message, "special:" or "instructions:" = special instructions
+    if (isSkipReply(text)) return
+    // If the customer volunteers both at once ("Happy Birthday! instructions: call first")
     const instrMatch = text.match(/(?:special\s*instructions?|delivery\s*instructions?|instructions?)\s*[:=]\s*(.+)/i)
     if (instrMatch) {
       draft.specialInstructions = instrMatch[1].trim()
+      draft.askedSpecialInstructions = true
       const msgPart = text.slice(0, instrMatch.index).replace(/[,;\s]+$/, '').trim()
       if (msgPart && msgPart.length > 1) draft.giftMessage = msgPart
     } else {
@@ -231,30 +257,59 @@ export function collectCheckoutDraft(messages: ChatTurn[]): CheckoutDraft {
   return draft
 }
 
+/** Ask ONLY for the contact fields that are still missing — never re-ask what the customer already gave. */
+function contactAskText(draft: CheckoutDraft, chatLang: ChatLang) {
+  const name = draft.recipientName || 'the recipient'
+  const missing: Array<'phone' | 'address' | 'city'> = []
+  if (!draft.phone) missing.push('phone')
+  if (!draft.address) missing.push('address')
+  if (!draft.city) missing.push('city')
+
+  const labels: Record<ChatLang | 'en', Record<'phone' | 'address' | 'city', string>> = {
+    en: { phone: 'phone number', address: 'delivery address', city: 'city' },
+    si: { phone: 'phone number eka', address: 'delivery address eka', city: 'city eka' },
+    singlish: { phone: 'phone number eka', address: 'delivery address eka', city: 'city eka' },
+    ta: { phone: 'phone number', address: 'delivery address', city: 'city' },
+    tanglish: { phone: 'phone number', address: 'delivery address', city: 'city' },
+  }
+  const parts = missing.map((m) => labels[chatLang]?.[m] ?? labels.en[m])
+  const enJoin =
+    parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+
+  if (chatLang === 'singlish' || chatLang === 'si') {
+    return `Got it. ${name} ge ${parts.join(', ')} ewannako.`
+  }
+  if (chatLang === 'tanglish' || chatLang === 'ta') {
+    return `Got it. ${name} oda ${parts.join(', ')} anuppunga.`
+  }
+  return `Got it. What is ${name}'s ${enJoin}?`
+}
+
 function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
   const name = draft.recipientName || 'the recipient'
+  if (missing === 'contact') return contactAskText(draft, chatLang)
   if (chatLang === 'singlish' || chatLang === 'si') {
     if (missing === 'name') return 'Checkout karanna kalin actual recipient name eka denna. Gift eka receive karanne katada?'
-    if (missing === 'phone') return `Got it. ${name} ge phone number, delivery address, city eka ewannako.`
     if (missing === 'address') return 'Address eka poddak madi. House number, road/lane name ekka full delivery address eka ewannako.'
     if (missing === 'date') return 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
     if (missing === 'sender') return 'Sender name eka ewannako. Email ekath ewanna puluwan (optional).'
-    return `Almost done! ${name} ta personal message ekak liyannada? Special delivery instructions tiyenam ekkama ewannako. Skip karanna "No" kiyannako.`
+    if (missing === 'special') return `Special delivery instructions monawa hari tiyenawada? (e.g. deliver karanna kalin call karanna) Nathnam "No" kiyannako.`
+    return `Almost done! ${name} ta personal message ekak liyannada? Skip karanna "No" kiyannako.`
   }
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     if (missing === 'name') return 'Checkout panna actual recipient name venum. Yaarukku deliver panna?'
-    if (missing === 'phone') return `Got it. ${name} phone number, delivery address, city anuppunga.`
     if (missing === 'address') return 'Address konjam short-a irukku. House number, road/lane name oda full delivery address anuppunga.'
     if (missing === 'date') return 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
     if (missing === 'sender') return 'Sender name anuppunga. Email optional-a anuppalaam.'
-    return `Almost done! ${name}-ku personal message ezhuthanuuma? Special delivery instructions irundha ekkavae anuppunga. Skip panna "No" sollunga.`
+    if (missing === 'special') return `Special delivery instructions edhavadhu irukka? (e.g. deliver panna munnadi call pannunga) Illena "No" sollunga.`
+    return `Almost done! ${name}-ku personal message ezhuthanuuma? Skip panna "No" sollunga.`
   }
   if (missing === 'name') return 'Sure. Who should receive this order? Please send the actual recipient name.'
-  if (missing === 'phone') return `Got it. What is ${name}'s phone number, delivery address, and city?`
   if (missing === 'address') return 'That address is a bit too short. Please send the full delivery address with house number and road or lane name.'
   if (missing === 'date') return 'What delivery date should I use? You can say tomorrow or send a specific date.'
   if (missing === 'sender') return 'Who is sending this? Send your name and email (email is optional).'
-  return `Almost done! Would you like to add a personal message for ${name}? Any special delivery instructions? Type "No" to skip.`
+  if (missing === 'special') return `Any special delivery instructions? (e.g. call before delivery, leave with security) Type "No" to skip.`
+  return `Almost done! Would you like to add a personal message for ${name}? Type "No" to skip.`
 }
 
 export function continueCheckoutCollection(
@@ -267,11 +322,12 @@ export function continueCheckoutCollection(
   const draft = collectCheckoutDraft(messages)
   const missing =
     !draft.recipientName ? 'name' :
-    !draft.phone || !draft.address || !draft.city ? 'phone' :
+    !draft.phone || !draft.address || !draft.city ? 'contact' :
     !hasFullAddress(draft.address) ? 'address' :
     !draft.date ? 'date' :
     !draft.senderName ? 'sender' :
     !draft.askedGiftMessage ? 'giftMessage' :
+    !draft.askedSpecialInstructions ? 'special' :
     null
 
   if (missing) {
@@ -281,6 +337,7 @@ export function continueCheckoutCollection(
         text: askText(missing, draft, chatLang),
         chips: missing === 'date' ? ['Tomorrow', 'This weekend'] :
                missing === 'giftMessage' ? ['No, skip', 'Happy Birthday!', 'With love'] :
+               missing === 'special' ? ['No, skip', 'Call before delivery'] :
                undefined,
       },
     }

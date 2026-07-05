@@ -51,7 +51,7 @@ function groqToolDefs() {
       type: 'function' as const,
       function: {
         name: 'kapruka_check_delivery',
-        description: 'Check delivery',
+        description: 'Call this to confirm the city/date is actually deliverable BEFORE showing a PLAN_BOARD. If unavailable, tell the customer and ask for a different date instead of proceeding.',
         parameters: {
           type: 'object',
           properties: { city: { type: 'string' }, delivery_date: { type: 'string' }, product_id: { type: 'string' } },

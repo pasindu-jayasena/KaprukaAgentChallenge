@@ -27,6 +27,17 @@ function clean(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
+/** Today's date in Sri Lanka, as an ISO "YYYY-MM-DD" string — independent of
+ * whatever timezone the server process itself happens to run in. */
+function colomboTodayIso(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Colombo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
 function cleanOptional(value: unknown): string | undefined {
   const v = clean(value)
   if (!v || /^(na|n\/a|none|null|not specified)$/i.test(v)) return undefined
@@ -81,15 +92,10 @@ export function validateCheckoutDetails(details: CheckoutDetailsInput): string[]
   if (d.recipient.city.length < 2) {
     issues.push('Recipient city is required.')
   }
-  const deliveryDate = new Date(d.recipient.date)
-  if (!d.recipient.date || Number.isNaN(deliveryDate.getTime())) {
+  if (!d.recipient.date || Number.isNaN(new Date(d.recipient.date).getTime())) {
     issues.push('Delivery date is required.')
-  } else {
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    if (deliveryDate.getTime() < todayStart.getTime()) {
-      issues.push('Delivery date cannot be in the past.')
-    }
+  } else if (d.recipient.date.slice(0, 10) < colomboTodayIso()) {
+    issues.push('Delivery date cannot be in the past.')
   }
 
   return issues

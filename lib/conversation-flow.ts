@@ -35,6 +35,8 @@ interface CheckoutDraft {
   specialInstructions?: string
   askedGiftMessage?: boolean
   askedSpecialInstructions?: boolean
+  /** The customer's last date answer parsed but was already in the past — re-ask instead of silently accepting it. */
+  dateWasPast?: boolean
 }
 
 // "No", "No, skip", "no thanks", "epa", "venda", "නෑ" … all mean skip.
@@ -150,23 +152,6 @@ function extractEmail(text: string) {
   return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
 }
 
-function extractDate(text: string) {
-  const t = clean(text)
-  const explicit = text.match(/\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2})\b/)
-  if (explicit) return explicit[1].replace(/\//g, '-')
-  const dayMonth = text.match(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})\b/)
-  if (dayMonth) {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = dayMonth[2].padStart(2, '0')
-    const day = dayMonth[1].padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
-  if (/\btomorrow|heta|naalai\b/.test(t)) return colomboDateOffset(1)
-  if (/\btoday|ada|indru\b/.test(t)) return colomboDateOffset(0)
-  return undefined
-}
-
 function colomboDateOffset(days: number) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Colombo',
@@ -179,6 +164,30 @@ function colomboDateOffset(days: number) {
   const day = Number(parts.find((p) => p.type === 'day')?.value)
   const d = new Date(Date.UTC(year, month - 1, day + days))
   return d.toISOString().slice(0, 10)
+}
+
+/** ISO "YYYY-MM-DD" strings compare correctly lexicographically — no Date/timezone pitfalls. */
+export function isPastDate(dateStr: string): boolean {
+  return dateStr < colomboDateOffset(0)
+}
+
+function extractDate(text: string) {
+  const t = clean(text)
+  const explicit = text.match(/\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2})\b/)
+  if (explicit) return explicit[1].replace(/\//g, '-')
+  const dayMonth = text.match(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})\b/)
+  if (dayMonth) {
+    const year = Number(colomboDateOffset(0).slice(0, 4))
+    const month = dayMonth[2].padStart(2, '0')
+    const day = dayMonth[1].padStart(2, '0')
+    const candidate = `${year}-${month}-${day}`
+    // A bare day/month with no year means "the next time this date comes
+    // around" — if it already passed this year, that means next year.
+    return isPastDate(candidate) ? `${year + 1}-${month}-${day}` : candidate
+  }
+  if (/\btomorrow|heta|naalai\b/.test(t)) return colomboDateOffset(1)
+  if (/\btoday|ada|indru\b/.test(t)) return colomboDateOffset(0)
+  return undefined
 }
 
 function splitDetails(text: string) {
@@ -231,7 +240,16 @@ function mergeFieldAnswer(draft: CheckoutDraft, assistantText: string, userText:
   }
 
   if (/\b(delivery date|deliver date|which date|date)\b/.test(ask)) {
-    if (date) draft.date = date
+    if (date && isPastDate(date)) {
+      // Explicit past date — don't silently accept it. Leave draft.date unset
+      // so the "missing date" question fires again, this time explaining why.
+      draft.dateWasPast = true
+      return
+    }
+    if (date) {
+      draft.date = date
+      draft.dateWasPast = false
+    }
     return
   }
 
@@ -315,7 +333,10 @@ function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
   if (chatLang === 'singlish' || chatLang === 'si') {
     if (missing === 'name') return 'Checkout karanna kalin actual recipient name eka denna. Gift eka receive karanne katada?'
     if (missing === 'address') return 'Address eka poddak madi. House number, road/lane name ekka full delivery address eka ewannako.'
-    if (missing === 'date') return 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
+    if (missing === 'date')
+      return draft.dateWasPast
+        ? 'Ah, oya kiyapu date eka giya kalayata. Delivery date eka adata nathnam eyata passe wenna one — mokak date ekakda ganna one?'
+        : 'Delivery date eka mokakda? Tomorrow da, nathnam specific date ekakda?'
     if (missing === 'sender') return 'Sender name eka ewannako. Email ekath ewanna puluwan (optional).'
     if (missing === 'special') return `Special delivery instructions monawa hari tiyenawada? (e.g. deliver karanna kalin call karanna) Nathnam "No" kiyannako.`
     return `Almost done! ${name} ta personal message ekak liyannada? Skip karanna "No" kiyannako.`
@@ -323,14 +344,20 @@ function askText(missing: string, draft: CheckoutDraft, chatLang: ChatLang) {
   if (chatLang === 'tanglish' || chatLang === 'ta') {
     if (missing === 'name') return 'Checkout panna actual recipient name venum. Yaarukku deliver panna?'
     if (missing === 'address') return 'Address konjam short-a irukku. House number, road/lane name oda full delivery address anuppunga.'
-    if (missing === 'date') return 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
+    if (missing === 'date')
+      return draft.dateWasPast
+        ? 'Aiyo, neenga sonna date already kadandhu poitchu. Delivery date indraikku illa adhukku apram irukkanum — enna date venum?'
+        : 'Delivery date enna? Tomorrow-aa, illa specific date-aa?'
     if (missing === 'sender') return 'Sender name anuppunga. Email optional-a anuppalaam.'
     if (missing === 'special') return `Special delivery instructions edhavadhu irukka? (e.g. deliver panna munnadi call pannunga) Illena "No" sollunga.`
     return `Almost done! ${name}-ku personal message ezhuthanuuma? Skip panna "No" sollunga.`
   }
   if (missing === 'name') return 'Sure. Who should receive this order? Please send the actual recipient name.'
   if (missing === 'address') return 'That address is a bit too short. Please send the full delivery address with house number and road or lane name.'
-  if (missing === 'date') return 'What delivery date should I use? You can say tomorrow or send a specific date.'
+  if (missing === 'date')
+    return draft.dateWasPast
+      ? "That date has already passed. Delivery has to be today or a later date — what date would you like instead?"
+      : 'What delivery date should I use? You can say tomorrow or send a specific date.'
   if (missing === 'sender') return 'Who is sending this? Send your name and email (email is optional).'
   if (missing === 'special') return `Any special delivery instructions? (e.g. call before delivery, leave with security) Type "No" to skip.`
   return `Almost done! Would you like to add a personal message for ${name}? Type "No" to skip.`

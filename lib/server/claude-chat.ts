@@ -79,7 +79,7 @@ function claudeToolDefs(): ToolDef[] {
       type: 'function',
       function: {
         name: 'kapruka_check_delivery',
-        description: 'Check delivery availability for a city and date',
+        description: 'Call this to confirm the city/date is actually deliverable BEFORE showing a PLAN_BOARD. If it comes back unavailable, tell the customer plainly and ask for a different date — never present a plan for a date Kapruka just said it cannot deliver to.',
         parameters: {
           type: 'object',
           properties: {

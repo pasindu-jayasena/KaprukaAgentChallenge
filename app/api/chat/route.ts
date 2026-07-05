@@ -155,6 +155,43 @@ function buildPayload(fullText: string): ChatPayload {
   }
 }
 
+/**
+ * The Kapruka MCP itself said this city/date/product combo can't be
+ * delivered — never show a payment-ready preview for it. Ask for a
+ * different date instead, mentioning the reason when Kapruka gave one.
+ */
+function deliveryUnavailablePayload(
+  preview: Awaited<ReturnType<typeof getCheckoutPreview>>,
+  chatLang: string
+): ChatPayload {
+  const reason = preview.deliveryNote
+  if (chatLang === 'si' || chatLang === 'singlish') {
+    return {
+      type: 'chat',
+      text: reason
+        ? `${reason} Wena delivery date ekak denna puluwanda?`
+        : 'Aiyo, mee date/city ekata delivery eka available na. Wena date ekak denna puluwanda?',
+      chips: ['Tomorrow', 'This weekend'],
+    }
+  }
+  if (chatLang === 'ta' || chatLang === 'tanglish') {
+    return {
+      type: 'chat',
+      text: reason
+        ? `${reason} வேற delivery date சொல்ல முடியுமா?`
+        : 'Aiyo, indha date/city-ku delivery available illai. Vera date sollunga.',
+      chips: ['Tomorrow', 'This weekend'],
+    }
+  }
+  return {
+    type: 'chat',
+    text: reason
+      ? `${reason} Could you give me a different delivery date?`
+      : "Kapruka can't deliver to that city on that date. Could you give me a different delivery date?",
+    chips: ['Tomorrow', 'This weekend'],
+  }
+}
+
 function buildOrderPreviewPayload(
   cart: CartItem[],
   details: CheckoutDetailsInput,
@@ -292,6 +329,20 @@ export async function POST(req: Request) {
             return
           }
           if (checkoutContinuation?.details) {
+            const normalizedCheckout = normalizeCheckoutDetails(checkoutContinuation.details)
+            // Defense in depth: every other checkout entry point validates
+            // before building a preview — this one must too (a past or
+            // malformed date should never reach the payment-ready card).
+            if (!checkoutDetailsAreValid(normalizedCheckout)) {
+              emit({
+                type: 'final',
+                payload: {
+                  type: 'chat',
+                  text: 'A couple of those details do not look right — could you double-check the delivery date, phone number, and address and send them again?',
+                },
+              })
+              return
+            }
             emit({
               type: 'status',
               icon: 'search',
@@ -299,8 +350,11 @@ export async function POST(req: Request) {
               label: 'Checking delivery fee',
             })
             try {
-              const normalizedCheckout = normalizeCheckoutDetails(checkoutContinuation.details)
               const preview = await getCheckoutPreview(cart, normalizedCheckout)
+              if (!preview.deliveryAvailable) {
+                emit({ type: 'final', payload: deliveryUnavailablePayload(preview, chatLang) })
+                return
+              }
               emit({
                 type: 'final',
                 payload: buildOrderPreviewPayload(
@@ -375,6 +429,10 @@ export async function POST(req: Request) {
           })
           try {
             const preview = await getCheckoutPreview(cart, normalizedCheckout)
+            if (!preview.deliveryAvailable) {
+              emit({ type: 'final', payload: deliveryUnavailablePayload(preview, chatLang) })
+              return
+            }
             emit({
               type: 'final',
               payload: buildOrderPreviewPayload(cart, normalizedCheckout, preview),
@@ -558,6 +616,11 @@ export async function POST(req: Request) {
             return
           }
           const preview = await getCheckoutPreview(cart, details)
+          if (!preview.deliveryAvailable) {
+            payload = deliveryUnavailablePayload(preview, chatLang)
+            emit({ type: 'final', payload })
+            return
+          }
           payload = buildOrderPreviewPayload(
             cart,
             details,

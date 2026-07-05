@@ -93,6 +93,12 @@ export function CartDrawer({ open, onClose, onCheckoutSuccess }: Props) {
         setCheckoutError(data.error ?? 'Could not preview order. Please try again.')
         return
       }
+      if (data.deliveryAvailable === false) {
+        setCheckoutError(
+          data.deliveryNote ?? "Kapruka can't deliver to that city on that date. Please choose a different delivery date."
+        )
+        return
+      }
       setPendingDetails(details)
       setPreview({
         subtotal: data.subtotal,

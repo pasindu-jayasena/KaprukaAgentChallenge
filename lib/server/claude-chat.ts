@@ -1,9 +1,9 @@
 import type { KaprukaMCPClient } from '@/lib/server/mcp-client'
 import { sanitizeCreateOrderArgs, sanitizeToolOutput } from '@/lib/server/mcp-order'
 
-const CLAUDE_BASE_URL = process.env.CLAUDE_BASE_URL || 'https://tokenlb.net/v1'
+const CLAUDE_BASE_URL = process.env.CLAUDE_BASE_URL || 'https://api.llmsrelay.com/v1'
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || ''
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4.6'
 
 // Cost controls
 const MAX_TOKENS = 1200 // Room for 4–6 product picks in PRODUCT_TRIO

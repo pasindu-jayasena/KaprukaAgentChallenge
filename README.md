@@ -33,7 +33,7 @@ Open [http://localhost:3000](http://localhost:3000)
 |----------|----------|---------|
 | `CLAUDE_API_KEY` | Yes | Primary chat brain |
 | `CLAUDE_BASE_URL` | No | Claude API base URL |
-| `CLAUDE_MODEL` | No | Default: `claude-sonnet-4-6` |
+| `CLAUDE_MODEL` | No | Default: `claude-sonnet-4.6` |
 | `UPSTASH_REDIS_REST_URL` | **Production** | Persistent chat sessions |
 | `UPSTASH_REDIS_REST_TOKEN` | **Production** | Persistent chat sessions |
 

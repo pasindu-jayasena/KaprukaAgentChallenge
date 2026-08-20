@@ -517,7 +517,7 @@ export async function POST(req: Request) {
 
         const modelMessages = messagesForModel(messages)
 
-        // Primary: Claude via tokenlb.net (skip if order already created from form)
+        // Primary: Claude via LLMsRelay (skip if order already created from form)
         let usedBackup = false
         if (hasClaude) {
           try {

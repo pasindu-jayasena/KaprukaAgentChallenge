@@ -11,7 +11,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https: blob:",
-  "connect-src 'self' https://mcp.kapruka.com https://tokenlb.net https://api.groq.com",
+  "connect-src 'self' https://mcp.kapruka.com https://api.llmsrelay.com https://api.groq.com",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",

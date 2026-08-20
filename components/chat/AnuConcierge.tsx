@@ -336,6 +336,10 @@ function AnuChatInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: messages.sessions.newChat }),
       })
+      if (!res.ok) {
+        setChatMessages([{ role: 'assistant', content: getGreeting(uiLang) }])
+        return
+      }
       const data = (await res.json()) as { id?: string; session?: SessionRecord }
       if (data.id && data.session) {
         applySession(data.id, data.session)

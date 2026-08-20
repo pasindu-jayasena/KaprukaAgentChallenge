@@ -52,7 +52,7 @@ export function RecentSessionsSidebar({
 
   const load = useCallback(() => {
     fetch('/api/sessions')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : { sessions: [] }))
       .then((d: { sessions?: SessionSummary[] }) => setSessions(d.sessions ?? []))
       .catch(() => setSessions([]))
   }, [])
@@ -79,6 +79,10 @@ export function RecentSessionsSidebar({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: messages.sessions.newChat }),
     })
+    if (!res.ok) {
+      router.push('/chat')
+      return
+    }
     const data = (await res.json()) as { id?: string }
     load()
     if (data.id) router.push(`/chat?session=${data.id}`)

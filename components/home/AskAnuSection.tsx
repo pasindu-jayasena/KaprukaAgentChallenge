@@ -35,7 +35,7 @@ export function AskAnuSection() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: text.slice(0, 60) }),
     })
-    const data = (await res.json()) as { id?: string }
+    const data = res.ok ? ((await res.json()) as { id?: string }) : {}
     const q = encodeURIComponent(text.trim())
     router.push(data.id ? `/chat?session=${data.id}&q=${q}` : `/chat?q=${q}`)
   }

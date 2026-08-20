@@ -33,72 +33,102 @@ function deviceKey(deviceId: string) {
   return `device:${deviceId}`
 }
 
+function listMemorySessions(deviceId: string): SessionRecord[] {
+  const ids = memoryDeviceIndex.get(deviceId) ?? []
+  return ids
+    .map((id) => memorySessions.get(id))
+    .filter((s): s is SessionRecord => !!s)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, MAX_SESSIONS)
+}
+
+function saveMemorySession(deviceId: string, session: SessionRecord): void {
+  memorySessions.set(session.id, session)
+  const ids = memoryDeviceIndex.get(deviceId) ?? []
+  const next = [session.id, ...ids.filter((x) => x !== session.id)].slice(0, MAX_SESSIONS)
+  memoryDeviceIndex.set(deviceId, next)
+}
+
+function deleteMemorySession(deviceId: string, id: string): void {
+  memorySessions.delete(id)
+  const ids = memoryDeviceIndex.get(deviceId) ?? []
+  memoryDeviceIndex.set(
+    deviceId,
+    ids.filter((sessionId) => sessionId !== id)
+  )
+}
+
 export async function listSessions(deviceId: string): Promise<SessionRecord[]> {
   const redis = getRedis()
-  if (!redis) {
-    const ids = memoryDeviceIndex.get(deviceId) ?? []
-    return ids
-      .map((id) => memorySessions.get(id))
-      .filter((s): s is SessionRecord => !!s)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, MAX_SESSIONS)
+  if (!redis) return listMemorySessions(deviceId)
+
+  try {
+    const ids = (await redis.zrange<string[]>(deviceKey(deviceId), 0, MAX_SESSIONS - 1, {
+      rev: true,
+    })) ?? []
+
+    const sessions = await Promise.all(
+      ids.map(async (id) => {
+        const raw = await redis.get<string>(sessionKey(id))
+        if (!raw) return null
+        return typeof raw === 'string' ? (JSON.parse(raw) as SessionRecord) : (raw as SessionRecord)
+      })
+    )
+    return sessions.filter((s): s is SessionRecord => !!s)
+  } catch (error) {
+    console.error('Unable to list sessions from Redis; using temporary memory storage.', error)
+    return listMemorySessions(deviceId)
   }
-
-  const ids = (await redis.zrange<string[]>(deviceKey(deviceId), 0, MAX_SESSIONS - 1, {
-    rev: true,
-  })) ?? []
-
-  const sessions = await Promise.all(
-    ids.map(async (id) => {
-      const raw = await redis.get<string>(sessionKey(id))
-      if (!raw) return null
-      return typeof raw === 'string' ? (JSON.parse(raw) as SessionRecord) : (raw as SessionRecord)
-    })
-  )
-  return sessions.filter((s): s is SessionRecord => !!s)
 }
 
 export async function getSession(id: string): Promise<SessionRecord | null> {
   const redis = getRedis()
   if (!redis) return memorySessions.get(id) ?? null
 
-  const raw = await redis.get<string>(sessionKey(id))
-  if (!raw) return null
-  return typeof raw === 'string' ? (JSON.parse(raw) as SessionRecord) : (raw as SessionRecord)
+  try {
+    const raw = await redis.get<string>(sessionKey(id))
+    if (!raw) return null
+    return typeof raw === 'string' ? (JSON.parse(raw) as SessionRecord) : (raw as SessionRecord)
+  } catch (error) {
+    console.error('Unable to load a session from Redis; using temporary memory storage.', error)
+    return memorySessions.get(id) ?? null
+  }
 }
 
 export async function saveSession(deviceId: string, session: SessionRecord): Promise<void> {
   const redis = getRedis()
   if (!redis) {
-    memorySessions.set(session.id, session)
-    const ids = memoryDeviceIndex.get(deviceId) ?? []
-    const next = [session.id, ...ids.filter((x) => x !== session.id)].slice(0, MAX_SESSIONS)
-    memoryDeviceIndex.set(deviceId, next)
+    saveMemorySession(deviceId, session)
     return
   }
 
-  await redis.set(sessionKey(session.id), JSON.stringify(session), { ex: SESSION_TTL })
-  await redis.zadd(deviceKey(deviceId), {
-    score: new Date(session.updatedAt).getTime(),
-    member: session.id,
-  })
-  await redis.expire(deviceKey(deviceId), SESSION_TTL)
+  try {
+    await redis.set(sessionKey(session.id), JSON.stringify(session), { ex: SESSION_TTL })
+    await redis.zadd(deviceKey(deviceId), {
+      score: new Date(session.updatedAt).getTime(),
+      member: session.id,
+    })
+    await redis.expire(deviceKey(deviceId), SESSION_TTL)
+  } catch (error) {
+    console.error('Unable to save a session to Redis; using temporary memory storage.', error)
+    saveMemorySession(deviceId, session)
+  }
 }
 
 export async function deleteSession(deviceId: string, id: string): Promise<void> {
   const redis = getRedis()
   if (!redis) {
-    memorySessions.delete(id)
-    const ids = memoryDeviceIndex.get(deviceId) ?? []
-    memoryDeviceIndex.set(
-      deviceId,
-      ids.filter((x) => x !== id)
-    )
+    deleteMemorySession(deviceId, id)
     return
   }
 
-  await redis.del(sessionKey(id))
-  await redis.zrem(deviceKey(deviceId), id)
+  try {
+    await redis.del(sessionKey(id))
+    await redis.zrem(deviceKey(deviceId), id)
+  } catch (error) {
+    console.error('Unable to delete a session from Redis; using temporary memory storage.', error)
+    deleteMemorySession(deviceId, id)
+  }
 }
 
 export function newSessionId(): string {
